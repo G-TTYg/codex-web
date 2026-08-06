@@ -1,41 +1,34 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+set -euo pipefail
 
-unzip -o "$HOSTED_CODEX_APP_ZIP" -d scratch/
-asar extract "scratch/ChatGPT.app/Contents/Resources/app.asar" "scratch/asar"
-cp assets/* scratch/asar/webview/
-PWA_SOURCE_ICON="scratch/asar/webview/assets/app-D0g8sCle.png"
-PWA_TARGET_ICON="scratch/asar/webview/assets/pwa-icon-512.png"
-PWA_ICON_SIZE=512
-PWA_TOTAL_PADDING_PERCENT=25
-PWA_CONTENT_SIZE=$((PWA_ICON_SIZE * (100 - PWA_TOTAL_PADDING_PERCENT) / 100))
-PWA_PADDING_TOTAL=$((PWA_ICON_SIZE - PWA_CONTENT_SIZE))
-PWA_PADDING_BEFORE=$((PWA_PADDING_TOTAL / 2))
-PWA_PADDING_AFTER=$((PWA_PADDING_TOTAL - PWA_PADDING_BEFORE))
-sharp -i "$PWA_SOURCE_ICON" -o "$PWA_TARGET_ICON" -f png resize "$PWA_CONTENT_SIZE" "$PWA_CONTENT_SIZE" --fit inside -- flatten white -- extend "$PWA_PADDING_BEFORE" "$PWA_PADDING_AFTER" "$PWA_PADDING_BEFORE" "$PWA_PADDING_AFTER" --background white -- removeAlpha
-if [[ -n "${DEV:-}" ]]; then
-  prettier --ignore-path /dev/null --ignore-unknown --write "scratch/asar"
-else
-  patched_files=()
-  while IFS= read -r patched_file; do
-    patched_files+=("$patched_file")
-  done < <(
-    awk '/^\+\+\+ b\//{sub(/^\+\+\+ b\//, "scratch/asar/"); print}' patches/*.patch | sort -u
-  )
-  prettier --ignore-path /dev/null --ignore-unknown --write "${patched_files[@]}"
+if [[ -z "${HOSTED_CODEX_APP_ZIP:-}" ]]; then
+  echo "HOSTED_CODEX_APP_ZIP must point to an official ChatGPT Desktop zip." >&2
+  exit 1
 fi
-patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-remove-csp.patch
-patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-style.patch
-patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-preload.patch
-patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-favicon.patch
-patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-pwa.patch
-patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-thread-title.patch
-patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-initial-route.patch
-patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-electron-shim-close-sidebar.patch
-patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-prosemirror-inputmode.patch
-patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-use-atfs-for-local-files.patch
-patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-statsig-override-adapter.patch
-patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-prompt-search-param.patch
-patch --batch --forward --strip 1 --directory scratch/asar < patches/sentry-disable-shell.patch
-patch --batch --forward --strip 1 --directory scratch/asar < patches/sentry-disable-webview.patch
-rm -rf scratch/asar/node_modules/better-sqlite3
+
+SOURCE_DIR="scratch/desktop-source"
+ASAR_ROOT="scratch/asar"
+
+rm -rf "$SOURCE_DIR" "$ASAR_ROOT"
+mkdir -p "$SOURCE_DIR"
+unzip -q -o "$HOSTED_CODEX_APP_ZIP" -d "$SOURCE_DIR"
+
+ASAR_PATH="$SOURCE_DIR/ChatGPT.app/Contents/Resources/app.asar"
+if [[ ! -f "$ASAR_PATH" ]]; then
+  echo "Could not find ChatGPT.app/Contents/Resources/app.asar in $HOSTED_CODEX_APP_ZIP" >&2
+  exit 1
+fi
+
+node ./scripts/extract-needed-asar.mjs --asar "$ASAR_PATH" --out "$ASAR_ROOT" --force
+cp assets/* "$ASAR_ROOT/webview/"
+
+PWA_SOURCE_ICON="$(find "$ASAR_ROOT/webview/assets" -maxdepth 1 -type f -name 'app-*.png' | sort | head -n 1)"
+if [[ -z "$PWA_SOURCE_ICON" ]]; then
+  echo "Could not find a Desktop app icon under $ASAR_ROOT/webview/assets" >&2
+  exit 1
+fi
+
+node ./scripts/generate-pwa-icon.mjs \
+  "$PWA_SOURCE_ICON" \
+  "$ASAR_ROOT/webview/assets/pwa-icon-512.png"
+node ./scripts/patch-desktop-asar.mjs --root "$ASAR_ROOT"

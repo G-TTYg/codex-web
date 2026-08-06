@@ -1,99 +1,108 @@
-# upgrading
+# Upgrading Codex Desktop
 
-instructions for upgrading codex-web to point at a new version of upstream
-Codex Desktop.
+Desktop upgrades are compatibility migrations, not version-string-only changes.
+The semantic patcher must either apply every expected behavior exactly once or
+stop the build.
 
-## backing up
+## 1. Record every version layer
 
-we will start by generating a scratch directory and backing it up. first, let's
-get the `scratch` directory to a known state by running the following
+Check the official macOS appcast and Windows Store package independently. For
+Windows, `setup-windows.ps1 -SkipInstall` prints Appx, ASAR, brand, and Electron
+metadata. Also record `codex --version` for the CLI that will run the shell.
 
-```bash
-rm -rf scratch scratch-backup # remove existing past scratch directories to start from clean state
-DEV=1 nix develop --command yarn run prepare:asar 
-mv scratch scratch-backup
-```
+Create a `codex/` feature branch and add the discoveries, source URLs, and test
+matrix to the dated project log before changing compatibility code.
 
-the `scratch-backup` directory holds the patched, working version of codex-web.
-we will use this when moving the patches over to the new version to understand
-the context the patches were being applied in.
+## 2. Update pinned sources
 
-## updating urls
+Update:
 
-there are a few places to update next.
+- `CODEX_DESKTOP_VERSION` default in `scripts/prepare`;
+- `appVersion` and the official zip hash in `default.nix`;
+- the project Electron development dependency when ASAR metadata changes; and
+- `nix/codex/default.nix` when the Desktop runtime requires a newer CLI.
 
-1. `appVersion` in default.nix and `hash` in `codexZip`.
-2. `APP_VERSION` in ./scripts/prepare
+The Homebrew `chatgpt` cask is a useful independent source for official macOS
+zip versions and SHA-256 values. Convert the hex digest to an SRI hash or run
+`nix hash file` against the downloaded archive. npm registry integrity values
+can be used directly as SRI hashes for the platform Codex CLI tarballs.
 
-then temporarily comment out the patch lines in ./scripts/prepare_asar and run
+Do not assume the Windows Appx version equals the version inside `app.asar`.
 
-```bash
-DEV=1 nix develop --command yarn run prepare:asar 
-cp -r scratch scratch-new-version-unmodified
-```
+## 3. Extract an unmodified comparison tree
 
-## upgrading the codex-cli version
-
-this part can be run concurrently with the rest of the upgrade process. make
-sure to wait for its completion before doing validation. run it in a subagent.
-
-run the following to get the version of the new codex-cli
+Keep the last known-good generated tree outside `scratch/asar`, then extract the
+new source without patching it. The shared extractor is platform-neutral:
 
 ```bash
-scratch/ChatGPT.app/Contents/Resources/codex --version
+node scripts/extract-needed-asar.mjs \
+  --asar /absolute/path/to/app.asar \
+  --out scratch/asar-new-unpatched \
+  --force
 ```
 
-then update the `nix/codex/default.nix` file's `version` field and hashes to
-point to the new version.
+On Windows, pass an explicit source to the setup script after the patcher has
+been updated:
 
-## porting over patches
+```powershell
+.\setup-windows.ps1 -AppAsarPath C:\path\to\app.asar -SkipInstall
+```
 
-now we have a few folders
+Never commit the extracted trees or official archive.
 
-* `scratch-backup`: patches applied on top of old version of Codex Desktop
-* `scratch-new-version-unmodified`: plain extracted new version of Codex Desktop
-* `scratch`: working copy we will be modifying
+## 4. Port semantic transformations
 
-now carefully look at the patches in `patches/` and how they were applied in
-`scratch-backup` and bring the changes over to `scratch`. apply them directly
-in-tree first. don't worry immediately about updating the patches yet.
-
-## updating patches
-
-once the patches have been made in `scratch`, diff the changes in `scratch`
-against `scratch-new-version-unmodified` and update the patches in `patches/`.
-always generate the patches by running `diff` and always avoid writing the
-patches manually as it's very easy to get them wrong.
-
-once that is done, uncomment the patch lines in `scripts/prepare_asar` and run
+Run the patcher against the unmodified tree:
 
 ```bash
-mv scratch scratch-patched-inplace
-rm -rf scratch
-DEV=1 nix develop --command yarn run prepare:asar 
+node scripts/patch-desktop-asar.mjs --root scratch/asar-new-unpatched
 ```
 
-then diff `./scratch-patched-inplace` with the resulting `./scratch` to validate
-the patches were applied as expected.
+For each failed assertion:
 
-## validation
+1. identify the upstream module by behavior, not its fingerprinted filename;
+2. compare the old and new implementation around the failed contract;
+3. update both discovery anchors and the smallest required transformation;
+4. retain the exactly-one-match check; and
+5. document any changed behavior or tradeoff.
 
-to validate things are still working, we'll first validate the server, then the
-client. before starting this step, make sure to wait for the
-`upgrading the codex-cli version` subagent to finish.
+The current transforms cover routing/history, mobile sidebar behavior,
+ProseMirror touch input, local file URLs, Statsig network isolation, URL prompt
+prefill, browser titles, PWA/preload markup, and Sentry disablement in renderer,
+worker, and shell bundles.
 
-to validate the server, run the following
+## 5. Verify by increasing scope
+
+Run the host-specific complete build:
 
 ```bash
-nix develop --command yarn server
+npm ci --ignore-scripts
+npm run build
 ```
 
-next validate the client by opening a browser window to `http://localhost:8214`
-and validating things show up on the page.
+```powershell
+.\setup-windows.ps1
+```
 
-look in the console for errors. also, look on the screen to see whether any
-error dialogs popped up. sometimes errors occur, but they're silent and exhibit
-as loading taking forever (more than 1m). look out for that case too.
+Then verify:
 
-if there are errors, bring them to the users attention and we will decide how to
-proceed.
+- metadata and brand validation succeeded;
+- every semantic transform reported success with no skipped assertion;
+- browser and server builds completed;
+- the server starts and `/` plus the WebSocket endpoint are reachable;
+- existing and new tasks render;
+- prompt prefill and browser navigation work;
+- mobile sidebar and touch composer behavior work;
+- file/workspace pickers and inline images work; and
+- subagent/app-host MessagePort traffic still works.
+
+Exercise Windows natively and at least one Unix build path before release. If a
+macOS or Linux runtime is unavailable, report that limitation explicitly; a
+successful shared ASAR build is not a native runtime test.
+
+## 6. Close the upgrade
+
+Update the compatibility table in `README.md`, architecture/docs when contracts
+changed, the ADR for a new cross-cutting decision, and the dated process log.
+Review `git diff`, check for extracted proprietary files or credentials, stage
+only intentional paths, and create a local verified commit before publishing.

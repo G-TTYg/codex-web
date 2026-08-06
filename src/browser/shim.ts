@@ -127,6 +127,7 @@ declare global {
 }
 
 declare const __CODEX_APP_VERSION__: string;
+declare const __CODEX_ELECTRON_VERSION__: string;
 
 let requestCounter = 0;
 let socket: WebSocket | null = null;
@@ -354,12 +355,31 @@ const initialSidebarState = !mobileMediaQuery.matches;
 const electronShim = (window.__ELECTRON_SHIM__ ??= {});
 const buildFlavor: "prod" | "dev" | "agent" | string = "prod";
 
+if (typeof globalThis.crypto.randomUUID !== "function") {
+  // randomUUID is secure-context-only, but direct HTTP Tailnet addresses are
+  // intentionally supported. getRandomValues remains available and provides
+  // the same cryptographic entropy for an RFC 4122 UUID v4.
+  Object.defineProperty(globalThis.crypto, "randomUUID", {
+    configurable: true,
+    value: () => {
+      const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+      bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+      bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+      const hex = Array.from(bytes, (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    },
+    writable: false,
+  });
+}
+
 Object.assign(globalThis, {
   process: {
     arch: "arm64",
     platform: "darwin",
     versions: {
-      electron: "41.2.0",
+      electron: __CODEX_ELECTRON_VERSION__,
     },
   },
 });
@@ -561,6 +581,13 @@ export const ipcRenderer = {
 
     if (channel === "codex_desktop:get-system-theme-variant") {
       return themeMediaQuery.matches ? "dark" : "light";
+    }
+
+    if (channel === "codex_desktop:get-initial-sidebar-bootstrap") {
+      // The browser session has no synchronous bridge to the host-side catalog.
+      // Returning no bootstrap lets the renderer populate it through the
+      // existing asynchronous app-server stream.
+      return null;
     }
 
     return unimplemented("ipcRenderer.sendSync");

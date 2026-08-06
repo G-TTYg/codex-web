@@ -11,18 +11,21 @@ const preloadEntryPath = path.resolve(
   "scratch/asar/.vite/build/preload.js",
 );
 const browserNodeEnv = process.env.NODE_ENV ?? "production";
-const asarPackageJson = JSON.parse(readFileSync(asarPackagePath, "utf8")) as {
-  version?: unknown;
-};
+const asarPackageJson = JSON.parse(readFileSync(asarPackagePath, "utf8"));
 
 if (typeof asarPackageJson.version !== "string" || !asarPackageJson.version) {
   throw new Error(`Expected a version string in ${asarPackagePath}`);
+}
+const electronVersion = asarPackageJson.devDependencies?.electron;
+if (typeof electronVersion !== "string" || !electronVersion) {
+  throw new Error(`Expected an Electron version in ${asarPackagePath}`);
 }
 
 export default defineConfig({
   root: webviewRoot,
   define: {
     __CODEX_APP_VERSION__: JSON.stringify(asarPackageJson.version),
+    __CODEX_ELECTRON_VERSION__: JSON.stringify(electronVersion),
     "process.env.NODE_ENV": JSON.stringify(browserNodeEnv),
   },
   server: {

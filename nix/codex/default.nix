@@ -15,24 +15,24 @@ flake-utils.lib.eachSystem systems (
   system:
   let
     pkgs = import nixpkgs { inherit system; };
-    version = "0.144.0-alpha.4";
+    version = "0.147.0-alpha.1.2";
     platform =
       {
         aarch64-darwin = {
           npm = "darwin-arm64";
-          hash = "sha256-y77uJWKhP/6hgziwjBiQXRpWuB8hfpi6rhcH6O6+/bs=";
+          hash = "sha512-f0+t0R77PFu0sG3WH67pDNIslePbua7grhxFIkAeatWnSxHq7XRYuK1VCg/2QtBYR3KYYPd3D6XjNMDgwu04Ag==";
         };
         x86_64-darwin = {
           npm = "darwin-x64";
-          hash = "sha256-nz/B9Gqnc/bWY+7NO4jHU/SGIIJtlFgwwaaofbyctcs=";
+          hash = "sha512-Ig64tM9JMxIFeltnDjuD0AQsmT0Ef19UWyGlgLhmBNzr5LeZceds0NsvJPcOwtuKZkkmcJugtcdDs0+WWM5s6g==";
         };
         aarch64-linux = {
           npm = "linux-arm64";
-          hash = "sha256-nxFVEkzHTgUiON6N9jYa2FBfVcL76xjS6XZU+90wt60=";
+          hash = "sha512-BTpVNF/jLO3K9FYxNHUg8PdukPphff967A4lvED+mxbPpFYE2K7ZWSS1P3zzdueO3wtrhQJfTK6904z28I3Vow==";
         };
         x86_64-linux = {
           npm = "linux-x64";
-          hash = "sha256-Tas4KCEn+Qcc8TCVYV1Gjwob/02Ho9px0ezbWWMj7d8=";
+          hash = "sha512-hXqsBa8SWyP8E8BwI+bwaSV2PeRyoHTbaKttNbsOtysJWXX6KqFxSIZcO3TfwsLvHS5tY9b96T/QFtliHepF4w==";
         };
       }
       .${system};
