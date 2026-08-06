@@ -17,8 +17,12 @@ export function mapBrowserPathToInitialRoute(pathname: string, search: string) {
     };
   }
 
+  const memoryPath = mapBrowserPathToRoute(pathname);
   return {
-    memoryPath: mapBrowserPathToRoute(pathname),
+    // The native memory router owns composer query parameters. Preserve them
+    // only for the home route; thread URLs have their own path mapping.
+    memoryPath:
+      pathname === "/" && search ? `${memoryPath}${search}` : memoryPath,
   };
 }
 

@@ -1,66 +1,94 @@
-# architecture
+# Architecture
 
-a bit on how this whole thing is put together.
+`codex-web` reuses the official Codex Desktop renderer while replacing the
+Electron window boundary with a browser/server bridge. Official application
+code is extracted at install time and is not stored in this repository.
 
-the general approach here is to download the electron app, unpack it and apply
-as small a set of patches to it as possible to get it working.
+## Build-time flow
 
-an electron app has two parts, a part which runs in the main process and a part
-which runs in the renderer process.
+```mermaid
+flowchart LR
+  W["Windows Store app.asar"] --> E["Selective ASAR extractor"]
+  U["Official macOS Desktop zip"] --> E
+  E --> M["Metadata validation"]
+  M --> P["Shared fail-closed semantic patcher"]
+  P --> V["Vite browser preload build"]
+  P --> S["TypeScript server build"]
+  V --> O["Generated scratch/asar tree"]
+  S --> O
+```
 
-the main process part is basically a node process with a `require('electron')`
-dependency. it runs even before anything is visible on the screen, setting up
-the system tray widget, running background tasks and hooking up listeners for
-app launcher events. there is a single instance of the main process regardless
-of how many windows are open.
+Windows discovers the newest installed `OpenAI.Codex` Appx package in
+`setup-windows.ps1`. macOS and Linux download the pinned official macOS zip, or
+consume `HOSTED_CODEX_APP_ZIP` when supplied. Both paths converge on:
 
-the ui runs inside an electron renderer process. in the desktop app, this looks
-sorta like a browser with some modifications to the browser's chrome. it handles
-displaying the interface, reacting to events from user interaction and holding
-onto state which lives close to the ui (what text is in the prompt box for
-example).
+- `scripts/extract-needed-asar.mjs`, which extracts only the Desktop package
+  metadata, compiled shell bundles, webview, skills, and native-menu locales;
+- `scripts/patch-desktop-asar.mjs`, which validates the ChatGPT brand and applies
+  every browser compatibility change through unique semantic anchors;
+- `scripts/generate-pwa-icon.mjs`, which creates the browser install icon; and
+- the shared browser and server builds.
 
-the electron renderer process usually launched by the electron main process. the
-main process and render process communicate via an IPC setup in a [preload
-script]. the preload script is injected into the renderer process before
-anything else loads, has privileged access and can expose functions and data to
-the renderer realm through `contextBridge.exposeInMainWorld`. the preload script
-has access to [`ipcRenderer`].
+Selective extraction intentionally omits upstream native modules. The Desktop
+shell only leaves `better-sqlite3` external in the supported bundle, and the
+project supplies a host-native build of that dependency.
 
-codex-web hooks the preload script by providing [shim.ts](./src/browser/shim.ts)
-as a stand-in for electron in the renderer process and then setting up preload
-to run in the renderer realm (see
-[vite.browser.config.ts](./vite.browser.config.ts)).
+## Runtime flow
 
-next, we apply a series of patches to both code running in the main process and
-the renderer process. these are applied at postinstall time through the
-[`prepare_asar`](./scripts/prepare_asar) script. patches are located
-in [./patches](./patches) and applied ontop of the prettified code extracted
-from the upstream app. care was taken here to patch at installation time to
-avoid redistributing the original code.
-the [./patches/webview-preload.patch](patches/webview-preload.patch) connects
-the shimmed preload script to the index.html entrypoint.
+The official renderer expects a preload script and Electron IPC. Vite bundles
+the upstream preload together with `src/browser/shim.ts`, which provides the
+small Electron-compatible surface needed in a normal browser.
 
-we aim for the patches to be as small as possible as they're the most annoying
-part to change. the patches today are mostly around routing, urls, page title,
-pwa and mobile behavior.
+Renderer IPC is serialized over a WebSocket to `src/server/main.ts`. The server
+loads the official Desktop main bundle after installing the module alias in
+`src/server/module.ts`; imports of `electron` resolve to the host-side shim in
+`src/server/electron/`. The existing MessagePort/app-host forwarding is kept so
+subagents and newer Desktop protocol paths continue to work.
 
-to connect the ipc from the renderer process to the main process, we use a
-websocket for most messages intercepting and handing a small handful of messages
-directly (file picker, workspace picker). today, the remaining parts of shim are
-for connecting the in memory router to the browser history and setting up the
-sidebar behavior on mobile.
+The browser shim handles local browser concerns such as history mapping, mobile
+sidebar state, file/workspace selection, and local file URLs. The server shim
+owns privileged host behavior such as filesystem access and launching the Codex
+app-server. Platform-specific Appx/zip discovery never enters this runtime IPC
+layer.
 
-the ipc websocket is hosted by [main.ts](./src/server/main.ts). this process
-binds a port and listens for incoming websocket connections. it also shims
-electron (see `installModuleAliasHook`) before loading the electron shell
-entrypoint. the shims are located in
-[./src/server/electron](./src/server/electron) and focus on providing the
-minimum amount of functionality needed to make the app work. this comes down to
-some network transport to the outside world and hooking up to the ipc pipe from
-the renderer. this part is the most sloppy part of the codebase as i left codex
-to figure it out unattended. the parts around `__codexElectronIpcBridge` are the
-important bits related to wiring up the ipc bridge.
+## Version contracts
 
-[preload script]: https://www.electronjs.org/docs/latest/tutorial/tutorial-preload
-[`ipcRenderer`]: https://www.electronjs.org/docs/latest/api/ipc-renderer
+These values must not be conflated:
+
+- macOS Sparkle release version;
+- Windows Appx package version;
+- `version` inside the extracted ASAR;
+- Electron version inside the ASAR package metadata; and
+- Codex CLI version.
+
+The ASAR version identifies renderer compatibility. Both browser and server
+Electron shims read the extracted package metadata rather than relying on a
+second hard-coded value. Windows prints every layer during setup.
+
+## Patch policy
+
+The former fingerprinted unified diffs were removed. Current Desktop releases
+coalesce many modules into large fingerprinted chunks, making filename- and
+format-sensitive diffs brittle across platforms. The shared semantic patcher:
+
+1. locates a bundle using multiple independent behavior anchors;
+2. requires exactly one match for each transformation;
+3. recognizes an already-patched target; and
+4. aborts on missing or ambiguous contracts.
+
+Do not loosen an assertion merely to accept a new Desktop version. Inspect the
+upstream behavior, update the anchor and transformation together, then exercise
+the affected UI flow.
+
+The rationale is recorded in
+[`docs/adr/2026-08-06-shared-semantic-desktop-patcher.md`](./docs/adr/2026-08-06-shared-semantic-desktop-patcher.md).
+
+## Generated and packaged files
+
+- `scratch/desktop-source/`: temporary Unix zip extraction.
+- `scratch/chatgpt-desktop.asar`: copied Windows source ASAR.
+- `scratch/asar/`: patched package content shipped by npm/Nix.
+- `src/server/**/*.js`: generated server output.
+
+All are ignored by Git. The npm package includes only the patched extracted tree
+and compiled server files, not the original Desktop archive.
