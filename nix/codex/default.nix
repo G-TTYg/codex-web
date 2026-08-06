@@ -4,6 +4,7 @@
   ...
 }:
 let
+  runtimeVersions = builtins.fromJSON (builtins.readFile ../../scripts/runtime-versions.json);
   systems = [
     "aarch64-darwin"
     "x86_64-darwin"
@@ -15,7 +16,7 @@ flake-utils.lib.eachSystem systems (
   system:
   let
     pkgs = import nixpkgs { inherit system; };
-    version = "0.147.0-alpha.1.2";
+    version = runtimeVersions.codexCli.version;
     platform =
       {
         aarch64-darwin = {

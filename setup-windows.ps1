@@ -1,11 +1,15 @@
 param(
   [string]$AppVersion = "",
   [string]$AppAsarPath = "",
+  [string]$DownloadProxy = "",
+  [switch]$UseNewestInstalledDesktop,
+  [switch]$SkipPinnedCli,
   [switch]$SkipInstall
 )
 
 $ErrorActionPreference = "Stop"
 Set-Location -LiteralPath $PSScriptRoot
+. (Join-Path $PSScriptRoot "scripts\windows-runtime.ps1")
 
 $setupLockHashBytes = [System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($PSScriptRoot.ToLowerInvariant()))
 $setupLockHash = -join ($setupLockHashBytes | ForEach-Object { $_.ToString("x2") })
@@ -84,7 +88,9 @@ function Assert-FileNotLocked {
 function Resolve-ChatGPTDesktopAsar {
   param(
     [string]$RequestedVersion,
-    [string]$ExplicitAsarPath
+    [string]$ExplicitAsarPath,
+    [bool]$UseNewest,
+    [object]$Manifest
   )
 
   if ($ExplicitAsarPath) {
@@ -102,13 +108,18 @@ function Resolve-ChatGPTDesktopAsar {
 
   # The ChatGPT-branded Codex workspace app currently keeps the historical
   # OpenAI.Codex Store identity. Validate the actual brand from ASAR metadata.
-  $packages = @(Get-AppxPackage -Name "OpenAI.Codex" -ErrorAction SilentlyContinue |
+  $packageIdentity = [string]$Manifest.windowsDesktop.packageIdentity
+  $packages = @(Get-AppxPackage -Name $packageIdentity -ErrorAction SilentlyContinue |
     Sort-Object { [version]$_.Version } -Descending)
 
-  if ($RequestedVersion) {
-    $packages = @($packages | Where-Object { [string]$_.Version -eq $RequestedVersion })
+  $effectiveVersion = $RequestedVersion
+  if (-not $UseNewest -and -not $effectiveVersion) {
+    $effectiveVersion = [string]$Manifest.windowsDesktop.packageVersion
+  }
+  if ($effectiveVersion) {
+    $packages = @($packages | Where-Object { [string]$_.Version -eq $effectiveVersion })
     if ($packages.Count -eq 0) {
-      throw "Could not find an installed ChatGPT Desktop package with version $RequestedVersion. Omit -AppVersion to use the newest installed package."
+      throw "Could not find installed $packageIdentity version $effectiveVersion. Install that pinned Microsoft Store version, pass -AppAsarPath, or explicitly use -UseNewestInstalledDesktop."
     }
   }
 
@@ -126,7 +137,7 @@ function Resolve-ChatGPTDesktopAsar {
     }
   }
 
-  throw "Could not find a ChatGPT Desktop app.asar. Install or update the ChatGPT-branded Codex workspace app from Microsoft Store, or pass -AppAsarPath C:\path\to\app.asar."
+  throw "Could not find an installed ChatGPT Desktop app.asar. Install the pinned Microsoft Store package or pass -AppAsarPath explicitly."
 }
 
 function Resolve-PwaSourceIcon {
@@ -154,7 +165,15 @@ if (-not (Test-Path -LiteralPath "package.json")) {
 
 $node = Resolve-RequiredCommand -Names @("node.exe", "node") -ErrorMessage "Could not find Node.js. Install Node.js 22.12+ and re-run setup-windows.bat."
 $npm = Resolve-RequiredCommand -Names @("npm.cmd", "npm") -ErrorMessage "Could not find npm. Install Node.js and re-run setup-windows.bat."
-$chatGPTDesktopAsar = Resolve-ChatGPTDesktopAsar -RequestedVersion $AppVersion -ExplicitAsarPath $AppAsarPath
+$runtimeManifest = Get-CodexWebRuntimeManifest
+if (($UseNewestInstalledDesktop -and $AppVersion) -or ($AppAsarPath -and ($UseNewestInstalledDesktop -or $AppVersion))) {
+  throw "Use only one Desktop source override: -AppAsarPath, -AppVersion, or -UseNewestInstalledDesktop."
+}
+$chatGPTDesktopAsar = Resolve-ChatGPTDesktopAsar `
+  -RequestedVersion $AppVersion `
+  -ExplicitAsarPath $AppAsarPath `
+  -UseNewest ([bool]$UseNewestInstalledDesktop) `
+  -Manifest $runtimeManifest
 $asarPath = "scratch\chatgpt-desktop.asar"
 $asarOut = "scratch\asar"
 
@@ -173,6 +192,14 @@ if (-not $SkipInstall) {
       -Path "node_modules\better-sqlite3\build\Release\better_sqlite3.node" `
       -ErrorMessage "The current codex-web server is still using better_sqlite3.node. Close its console window or stop that project server, then run setup again."
     Invoke-NativeCommand -FilePath $npm -Arguments @("rebuild", "better-sqlite3") -Name "npm rebuild better-sqlite3"
+  }
+}
+
+if (-not $SkipPinnedCli) {
+  Invoke-Step "Prepare pinned Codex CLI" {
+    $pinnedCodexPath = Initialize-CodexWebPinnedCli -Manifest $runtimeManifest -Proxy $DownloadProxy
+    Write-Host "Pinned Codex CLI: $pinnedCodexPath"
+    Write-Host "Pinned Codex version: $($runtimeManifest.codexCli.version)"
   }
 }
 
@@ -195,6 +222,13 @@ if (-not $desktopAppVersion) {
 }
 if ($desktopAppBrand -ne "chatgpt") {
   throw "The selected ASAR is not the ChatGPT-branded Codex workspace app (codexAppBrand=$desktopAppBrand). Update the desktop app and retry."
+}
+if (-not $AppAsarPath -and -not $AppVersion -and -not $UseNewestInstalledDesktop) {
+  $expectedAsarVersion = [string]$runtimeManifest.windowsDesktop.asarVersion
+  $expectedElectronVersion = [string]$runtimeManifest.windowsDesktop.electronVersion
+  if ($desktopAppVersion -ne $expectedAsarVersion -or $desktopElectronVersion -ne $expectedElectronVersion) {
+    throw "Pinned Windows Desktop metadata mismatch. Expected ASAR $expectedAsarVersion / Electron $expectedElectronVersion, got ASAR $desktopAppVersion / Electron $desktopElectronVersion."
+  }
 }
 
 Write-Host "Desktop Appx identity:   $($chatGPTDesktopAsar.Identity)"

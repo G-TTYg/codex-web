@@ -14,24 +14,26 @@ newer upstream IPC and MessagePort fixes.
 
 The current compatibility target is:
 
-| Component                                   | Version verified on 2026-08-06 |
+| Component                                   | Version verified on 2026-08-07 |
 | ------------------------------------------- | ------------------------------ |
 | Desktop renderer / ASAR                     | `26.730.61639`                 |
 | Electron contract                           | `42.3.0`                       |
 | Windows Store package used for verification | `OpenAI.Codex 26.730.8199.0`   |
-| Codex CLI bundled by Nix                    | `0.147.0-alpha.1.2`            |
+| Codex CLI pinned by Windows and Nix         | `0.147.0-alpha.1.2`            |
 
 The Windows Appx version, ASAR version, Electron version, and Codex CLI version
-are separate version layers. A newer installed Desktop package is accepted only
-when every semantic patch still matches exactly; the build stops instead of
-silently producing a partially patched app.
+are separate version layers. Defaults live in `scripts/runtime-versions.json`.
+Windows requires the pinned Appx version and downloads the pinned platform CLI
+into the ignored `scratch/runtime/` tree with SHA-512 verification. It does not
+silently select the newest local Desktop package or CLI from `PATH`.
 
 ## Requirements
 
 - Node.js 22.12 or newer and npm.
-- A signed-in Codex CLI (`codex login --device-auth`).
-- Windows: the current ChatGPT-branded Codex workspace app from Microsoft
-  Store, unless an explicit `app.asar` is supplied.
+- A signed-in Codex account (`codex login --device-auth`). The pinned CLI uses
+  the normal host configuration/data directories unless you override them.
+- Windows: the pinned ChatGPT-branded Codex workspace Appx from Microsoft
+  Store, unless an explicit `app.asar` or Desktop override is supplied.
 - macOS/Linux source builds: Bash, `curl`, and `unzip`.
 
 ## Windows quick start
@@ -44,9 +46,11 @@ cd codex-web
 ```
 
 You can also double-click `setup-windows.bat` and then `start-codex-web.bat`.
-The setup script discovers the newest installed `OpenAI.Codex` Store package,
-extracts only the required files, applies the shared patches, and builds the
-browser and server bundles.
+The setup script selects the exact `OpenAI.Codex` Store package recorded in the
+runtime manifest, downloads and verifies the fixed Windows CLI, extracts only
+the required files, applies the shared patches, and builds the browser and
+server bundles. This runtime is independent from a separately installed Codex
+CLI while sharing its default account, configuration, and data directories.
 
 Useful Windows options:
 
@@ -54,8 +58,20 @@ Useful Windows options:
 # Build from an explicitly supplied official ASAR.
 .\setup-windows.ps1 -AppAsarPath C:\path\to\app.asar
 
+# Explicitly test the newest installed Store package instead of the pin.
+.\setup-windows.ps1 -UseNewestInstalledDesktop
+
+# Use an explicit CLI instead of the downloaded project pin.
+.\start-codex-web.ps1 -CodexPath C:\path\to\codex.exe
+
+# Route the pinned CLI download through a proxy.
+.\setup-windows.ps1 -DownloadProxy http://127.0.0.1:7897
+
 # Listen on a different local port.
 .\start-codex-web.ps1 -Port 9000
+
+# Listen on all interfaces (requires an external access-control layer).
+.\start-codex-web.ps1 -HostName 0.0.0.0
 
 # Deliberately expose only on the detected Tailscale address.
 .\start-codex-web.ps1 -PreferTailscale
@@ -73,6 +89,9 @@ that owns the requested port. `-PreferTailscale` fails closed if Tailscale is
 offline or its address cannot be determined, so it never silently falls back to
 loopback. `-TailscalePath`, `-TailscaleSocket`, `-TailscaleIPv4`, and
 `-TailscaleDNSName` support non-default installations and profiles.
+Binding `0.0.0.0` is supported, and includes loopback, LAN, Tailscale, and any
+public interface on the host. It is not an authentication mechanism; restrict
+access with a firewall, Tailnet ACL, and/or authenticated reverse proxy.
 
 ## macOS and Linux quick start
 
@@ -108,8 +127,9 @@ commands, read or modify accessible files and credentials, and consume account
 quota.
 
 The server has no built-in authentication. Keep the default loopback binding,
-or put it behind a trusted SSH tunnel, VPN, and/or authenticated reverse proxy.
-Do not bind it to a public interface without an external access-control layer.
+bind only to the detected Tailscale address, or put it behind a trusted SSH
+tunnel, VPN, and/or authenticated reverse proxy. Do not bind `0.0.0.0` to a
+publicly reachable interface without an external access-control layer.
 
 ## What works
 
@@ -137,7 +157,9 @@ Generated Desktop files live under `scratch/` and are never committed. See
 
 ## 中文说明
 
-Windows 用户安装最新版 Microsoft Store 中的 ChatGPT/Codex 桌面应用后，依次
+Windows 默认使用 `scripts/runtime-versions.json` 中固定的 Desktop Appx 和 Codex
+CLI 版本；CLI 下载到项目的 `scratch/runtime/`，不会自动使用本机 PATH 中的新版，
+但仍共用默认账号、配置和数据目录。安装清单指定的 Microsoft Store 版本后，依次
 运行 `setup-windows.bat` 和 `start-codex-web.bat` 即可。默认只监听本机
 `127.0.0.1:8214`；需要在 Tailnet 内访问时，请显式使用
 `start-codex-web.ps1 -PreferTailscale`。非默认安装可追加 `-TailscalePath`、

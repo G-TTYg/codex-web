@@ -2,8 +2,9 @@
 
 /**
  * npm's prepare lifecycle has to work from a Git dependency on every host.
- * Windows extracts the locally installed Store package; macOS and Linux use
- * the official macOS bundle as the architecture-independent renderer source.
+ * Windows extracts the exact Store Appx recorded in the runtime manifest and
+ * prepares a pinned project-local Codex CLI. macOS and Linux use the pinned
+ * official macOS bundle as their renderer source.
  */
 import { spawnSync } from "node:child_process";
 

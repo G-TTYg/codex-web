@@ -34,6 +34,9 @@
 
 - Treat macOS Sparkle version, Windows Appx version, extracted ASAR version,
   Electron version, and Codex CLI version as independent values.
+- Keep default runtime versions and official artifact integrity values in
+  `scripts/runtime-versions.json`. Windows must not silently replace a pinned
+  Appx or CLI with the newest locally installed version.
 - Use only official OpenAI Desktop distributions as extraction sources.
 - Validate ASAR metadata before patching. Never silently continue after an
   expected semantic anchor or patch hunk is missing or ambiguous.

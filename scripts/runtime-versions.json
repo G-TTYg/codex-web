@@ -1,0 +1,28 @@
+{
+  "desktop": {
+    "version": "26.730.61639",
+    "url": "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-arm64-26.730.61639.zip",
+    "integrity": "sha256-2ojIoV6rHdyO/fUBgtSsp0aNmVGT2VLDRKTRDTjEWHE="
+  },
+  "windowsDesktop": {
+    "packageIdentity": "OpenAI.Codex",
+    "packageVersion": "26.730.8199.0",
+    "asarVersion": "26.730.61639",
+    "electronVersion": "42.3.0"
+  },
+  "codexCli": {
+    "version": "0.147.0-alpha.1.2",
+    "windows": {
+      "x64": {
+        "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-alpha.1.2-win32-x64.tgz",
+        "integrity": "sha512-55hu2v/IyQ8Z1oViIqrdhTs6w4A3DNqyYHY7IjuFVWsxolRNfzx56xpaaC77CUIvSlF+4DL6nNwLEJur4/8WRA==",
+        "triple": "x86_64-pc-windows-msvc"
+      },
+      "arm64": {
+        "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-alpha.1.2-win32-arm64.tgz",
+        "integrity": "sha512-itZAtO9KlCV/XbPe9qNmYWL6mOY92crYFcCO4KudWQzzcNQLOE3YrwU7bxp2YujzZRVLxLZiJUHaYZ1kZGsY6Q==",
+        "triple": "aarch64-pc-windows-msvc"
+      }
+    }
+  }
+}

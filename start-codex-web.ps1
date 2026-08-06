@@ -2,6 +2,7 @@ param(
   [string]$HostName = "",
   [int]$Port = 8214,
   [string]$CodexPath = "",
+  [string]$DownloadProxy = "",
   [string]$TailscalePath = "",
   [string]$TailscaleSocket = "",
   [string]$TailscaleIPv4 = "",
@@ -11,11 +12,31 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-Location -LiteralPath $PSScriptRoot
+. (Join-Path $PSScriptRoot "scripts\windows-runtime.ps1")
+$runtimeManifest = Get-CodexWebRuntimeManifest
 
 function Ensure-CodexWebBuild {
+  param(
+    [object]$Manifest,
+    [string]$ExplicitCodexPath,
+    [string]$Proxy
+  )
+
   $serverEntry = Join-Path $PSScriptRoot "src\server\main.js"
   $webviewEntry = Join-Path $PSScriptRoot "scratch\asar\webview\index.html"
-  if ((Test-Path -LiteralPath $serverEntry) -and (Test-Path -LiteralPath $webviewEntry)) {
+  $pinnedCodexEntry = Get-CodexWebPinnedCliPath -Manifest $Manifest
+  $hasRuntime = [bool]$ExplicitCodexPath
+  if (-not $hasRuntime) {
+    try {
+      Assert-CodexWebPinnedCliVersion `
+        -CodexPath $pinnedCodexEntry `
+        -ExpectedVersion ([string]$Manifest.codexCli.version)
+      $hasRuntime = $true
+    } catch {
+      $hasRuntime = $false
+    }
+  }
+  if ((Test-Path -LiteralPath $serverEntry) -and (Test-Path -LiteralPath $webviewEntry) -and $hasRuntime) {
     return
   }
 
@@ -25,7 +46,14 @@ function Ensure-CodexWebBuild {
   }
 
   Write-Host "codex-web build outputs are missing. Running Windows setup first..."
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $setupScript
+  $setupArguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $setupScript)
+  if ($Proxy) {
+    $setupArguments += @("-DownloadProxy", $Proxy)
+  }
+  if ($ExplicitCodexPath) {
+    $setupArguments += "-SkipPinnedCli"
+  }
+  & powershell.exe @setupArguments
   if ($LASTEXITCODE -ne 0) {
     throw "Windows setup failed with exit code $LASTEXITCODE."
   }
@@ -130,76 +158,29 @@ function Get-TailscaleInfo {
   return [pscustomobject]$info
 }
 
-function Get-CodexCliCandidate {
-  param([string]$Path)
-
-  try {
-    $resolved = Resolve-Path -LiteralPath $Path -ErrorAction Stop
-    $resolvedPath = $resolved.ProviderPath
-    $versionOutput = & $resolvedPath --version 2>$null | Select-Object -First 1
-    if ($LASTEXITCODE -ne 0) {
-      return $null
-    }
-
-    $versionText = "0.0.0"
-    if ([string]$versionOutput -match 'codex-cli\s+([0-9]+(?:\.[0-9]+)+)') {
-      $versionText = $Matches[1]
-    }
-
-    $item = Get-Item -LiteralPath $resolvedPath
-    return [pscustomobject]@{
-      Path = $resolvedPath
-      Version = [version]$versionText
-      VersionText = $versionText
-      LastWriteTimeUtc = $item.LastWriteTimeUtc
-    }
-  } catch {
-    return $null
-  }
-}
-
 function Resolve-CodexCliPath {
-  param([string]$ExplicitPath)
-
-  if ($ExplicitPath) {
-    return (Resolve-Path -LiteralPath $ExplicitPath -ErrorAction Stop).ProviderPath
-  }
-
-  $candidatePaths = New-Object System.Collections.Generic.List[string]
-  $localRuntimeBin = Join-Path $env:LOCALAPPDATA "OpenAI\Codex\bin"
-  if (Test-Path -LiteralPath $localRuntimeBin) {
-    foreach ($runtime in Get-ChildItem -LiteralPath $localRuntimeBin -Directory -ErrorAction SilentlyContinue) {
-      $candidate = Join-Path $runtime.FullName "codex.exe"
-      if (Test-Path -LiteralPath $candidate) {
-        $candidatePaths.Add($candidate)
-      }
-    }
-  }
-
-  foreach ($name in @("codex.exe", "codex")) {
-    $cmd = Get-Command $name -ErrorAction SilentlyContinue
-    if ($cmd) {
-      $candidatePaths.Add($cmd.Source)
-    }
-  }
-
-  $candidates = @(
-    $candidatePaths |
-      Select-Object -Unique |
-      ForEach-Object { Get-CodexCliCandidate -Path $_ } |
-      Where-Object { $_ -ne $null }
+  param(
+    [string]$ExplicitPath,
+    [object]$Manifest
   )
 
-  if ($candidates.Count -eq 0) {
-    throw "Could not find a runnable codex CLI. Re-run with -CodexPath C:\path\to\codex.exe."
+  if ($ExplicitPath) {
+    $resolvedPath = (Resolve-Path -LiteralPath $ExplicitPath -ErrorAction Stop).ProviderPath
+    $versionOutput = & $resolvedPath --version 2>$null | Select-Object -First 1
+    $versionText = ([string]$versionOutput).Trim()
+    if ($versionText -notmatch 'codex-cli\s+[^\s]+') {
+      throw "Explicit Codex CLI is not runnable: $resolvedPath"
+    }
+    Write-Host "Using explicit Codex CLI version: $versionText"
+    return $resolvedPath
   }
 
-  $selected = $candidates |
-    Sort-Object -Property @{ Expression = "Version"; Descending = $true }, @{ Expression = "LastWriteTimeUtc"; Descending = $true } |
-    Select-Object -First 1
-
-  Write-Host ("Detected Codex CLI version: {0}" -f $selected.VersionText)
-  return $selected.Path
+  $pinnedPath = Get-CodexWebPinnedCliPath -Manifest $Manifest
+  Assert-CodexWebPinnedCliVersion `
+    -CodexPath $pinnedPath `
+    -ExpectedVersion ([string]$Manifest.codexCli.version)
+  Write-Host "Using repository-pinned Codex CLI version: $($Manifest.codexCli.version)"
+  return $pinnedPath
 }
 
 function Show-CodexWebLinks {
@@ -244,7 +225,7 @@ function Get-PortListener {
     Select-Object -First 1
 }
 
-Ensure-CodexWebBuild
+Ensure-CodexWebBuild -Manifest $runtimeManifest -ExplicitCodexPath $CodexPath -Proxy $DownloadProxy
 
 $tailscaleInfo = Get-TailscaleInfo `
   -ExplicitPath $TailscalePath `
@@ -269,7 +250,7 @@ if ($existingListeners.Count -gt 0) {
   throw "Port $Port is already in use by PID $($listener.OwningProcess). Stop that process or choose another -Port."
 }
 
-$CodexPath = Resolve-CodexCliPath -ExplicitPath $CodexPath
+$CodexPath = Resolve-CodexCliPath -ExplicitPath $CodexPath -Manifest $runtimeManifest
 $env:CODEX_CLI_PATH = $CodexPath
 
 Write-Host "Using Codex CLI: $env:CODEX_CLI_PATH"

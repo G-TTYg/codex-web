@@ -8,7 +8,7 @@ code is extracted at install time and is not stored in this repository.
 
 ```mermaid
 flowchart LR
-  W["Windows Store app.asar"] --> E["Selective ASAR extractor"]
+  W["Pinned Windows Store app.asar"] --> E["Selective ASAR extractor"]
   U["Official macOS Desktop zip"] --> E
   E --> M["Metadata validation"]
   M --> P["Shared fail-closed semantic patcher"]
@@ -18,8 +18,9 @@ flowchart LR
   S --> O
 ```
 
-Windows discovers the newest installed `OpenAI.Codex` Appx package in
-`setup-windows.ps1`. macOS and Linux download the pinned official macOS zip, or
+Windows selects the exact installed `OpenAI.Codex` Appx package recorded in
+`scripts/runtime-versions.json`; newer local Store packages are used only by an
+explicit override. macOS and Linux download the pinned official macOS zip, or
 consume `HOSTED_CODEX_APP_ZIP` when supplied. Both paths converge on:
 
 - `scripts/extract-needed-asar.mjs`, which extracts only the Desktop package
@@ -51,6 +52,14 @@ owns privileged host behavior such as filesystem access and launching the Codex
 app-server. Platform-specific Appx/zip discovery never enters this runtime IPC
 layer.
 
+On Windows, `scripts/windows-runtime.ps1` independently downloads the pinned
+x64 or arm64 Codex CLI tarball from the official npm registry, validates its
+SRI SHA-512 value, and extracts it below `scratch/runtime/`. The launcher uses
+that path by default instead of scanning the Desktop runtime or `PATH`.
+`-CodexPath` remains an explicit override. No `CODEX_HOME` override is applied,
+so the project-local executable shares the host's normal account,
+configuration, and data directories.
+
 ## Version contracts
 
 These values must not be conflated:
@@ -63,7 +72,9 @@ These values must not be conflated:
 
 The ASAR version identifies renderer compatibility. Both browser and server
 Electron shims read the extracted package metadata rather than relying on a
-second hard-coded value. Windows prints every layer during setup.
+second hard-coded value. Windows prints every layer during setup. Default
+versions and download integrity values are centralized in
+`scripts/runtime-versions.json`; Nix reads the same Desktop and CLI versions.
 
 ## Patch policy
 
