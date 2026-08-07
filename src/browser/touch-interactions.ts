@@ -40,6 +40,43 @@ html[${TOUCH_INPUT_ATTRIBUTE}="true"]
   pointer-events: auto !important;
 }
 
+@media (max-width: 768px), (hover: none) and (pointer: coarse) and (max-width: 1024px) and (orientation: portrait) {
+  html[${TOUCH_INPUT_ATTRIBUTE}="true"]
+    aside.app-shell-left-panel
+    [class*="group-hover"][class*="opacity-100"]:not(
+      [data-app-action-sidebar-scroll] *
+    ) {
+    opacity: 0 !important;
+  }
+
+  html[${TOUCH_INPUT_ATTRIBUTE}="true"]
+    aside.app-shell-left-panel
+    [class*="group-hover"][class*="pointer-events-auto"]:not(
+      [data-app-action-sidebar-scroll] *
+    ) {
+    pointer-events: none !important;
+  }
+
+  html[${TOUCH_INPUT_ATTRIBUTE}="true"]
+    aside.app-shell-left-panel
+    [class*="group-hover"][class*="visible"]:not(
+      [data-app-action-sidebar-scroll] *
+    ) {
+    visibility: hidden !important;
+  }
+
+  html[${TOUCH_INPUT_ATTRIBUTE}="true"]
+    aside.app-shell-left-panel
+    [class*="group-hover"]:has(:is(button, a, [role="button"]))[class*="w-auto"]:not(
+      [data-app-action-sidebar-scroll] *
+    ) {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+    width: 0 !important;
+  }
+}
+
 /* Touch rows are scroll surfaces, never HTML drag sources. */
 html[${TOUCH_INPUT_ATTRIBUTE}="true"] [draggable="true"] {
   -webkit-touch-callout: none;
