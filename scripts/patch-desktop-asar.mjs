@@ -255,6 +255,28 @@ const appInitialPath = findAssetFile(
     text.includes("networkOverrideFunc:"),
   /^app-initial-.*\.js$/,
 );
+// The bundled Shiki JavaScript regex engine assumes ES2025 inline modifier
+// groups are available, but current Safari/WebKit releases can reject the
+// generated `(?i:...)` forms. Compile TextMate grammars to the engine's ES2018
+// compatibility target so file rendering works across supported browsers.
+replaceOneOfOnce(
+  appInitialPath,
+  [
+    {
+      before:
+        "function VWi(e={}){let t=Object.assign({target:`auto`,cache:new Map},e)",
+      after:
+        "function VWi(e={}){let t=Object.assign({target:`ES2018`,cache:new Map},e)",
+    },
+    {
+      before:
+        "function WWi(e={}){let t=Object.assign({target:`auto`,cache:new Map},e)",
+      after:
+        "function WWi(e={}){let t=Object.assign({target:`ES2018`,cache:new Map},e)",
+    },
+  ],
+  "syntax highlighter Safari regex compatibility",
+);
 // The Windows Appx and macOS ZIP use different minified identifiers even at
 // the same ASAR version. Keep both verified forms explicit so either known
 // build patches successfully while any third contract still fails closed.

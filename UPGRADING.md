@@ -80,9 +80,10 @@ differ, keep the verified forms as alternatives inside the same transformation;
 do not fork the behavior or create a second platform patcher.
 
 The current transforms cover routing/history, mobile sidebar behavior,
-ProseMirror touch input, local file URLs, Statsig network isolation, URL prompt
-prefill, browser titles, PWA/preload markup, and Sentry disablement in renderer,
-worker, and shell bundles.
+ProseMirror touch input, Safari-compatible syntax-highlighter regular
+expressions, local file URLs, Statsig network isolation, URL prompt prefill,
+browser titles, PWA/preload markup, and Sentry disablement in renderer, worker,
+and shell bundles.
 
 ## 5. Verify by increasing scope
 

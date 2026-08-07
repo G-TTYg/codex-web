@@ -101,6 +101,11 @@ format-sensitive diffs brittle across platforms. The shared semantic patcher:
 3. recognizes an already-patched target; and
 4. aborts on missing or ambiguous contracts.
 
+The renderer's JavaScript TextMate engine is pinned to its ES2018 output target
+at patch time. This prevents it from emitting ES2025 inline regular-expression
+modifier groups that are not yet accepted by all Safari/WebKit versions while
+preserving syntax highlighting on newer browsers.
+
 Do not loosen an assertion merely to accept a new Desktop version. Inspect the
 upstream behavior, update the anchor and transformation together, then exercise
 the affected UI flow.
