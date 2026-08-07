@@ -84,7 +84,8 @@ differ, keep the verified forms as alternatives inside the same transformation;
 do not fork the behavior or create a second platform patcher.
 
 The current transforms cover routing/history, mobile sidebar behavior,
-touch-drag rejection, ProseMirror touch input, Safari-compatible
+context-target markers, touch long-press and drag rejection, ProseMirror touch
+input, Safari-compatible
 syntax-highlighter regular expressions, local file URLs, Statsig network
 isolation, URL prompt prefill, browser titles, PWA/preload markup, and Sentry
 disablement in renderer, worker, and shell bundles.
@@ -132,10 +133,12 @@ Then verify:
 - prompt prefill and browser navigation work;
 - the narrow-viewport and portrait touch-tablet left and right overlay drawers,
   outside-tap dismissal, unchanged application-menu/header controls, opaque
-  panel surfaces, touch composer, keyboard-dismiss-safe search, hover-only
-  actions, first-tap links beneath an open drawer, external-link fallback,
-  native Projects scrolling from nested row controls, scroll-only non-mouse
-  draggable rows, and mouse dragging work;
+  panel surfaces, touch composer, keyboard-dismiss-safe search, explicit
+  per-item action buttons, bottom action sheets for context and hover-only
+  operations, first-tap links beneath an open drawer, external-link fallback,
+  native Projects/file-tree scrolling from nested row controls, absence of
+  touch long-press menus and touch dragging, hardware right click, and mouse
+  dragging work;
 - file/workspace pickers and inline images work; and
 - a terminal can be created, resized, written to, closed, and reopened; and
 - a Codex Micro can be detected, connected, and updated after USB topology

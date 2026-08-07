@@ -11,7 +11,7 @@ import {
   type WorkspaceDirectoryEntries,
 } from "./workspace-root-dialog";
 import { installMobileLayout, MOBILE_VIEWPORT_QUERY } from "./mobile-layout";
-import { installTouchInteractions } from "./touch-interactions";
+import { installMobileInteractions } from "./mobile-interactions";
 
 type IpcListener = (event: unknown, ...args: unknown[]) => void;
 
@@ -373,7 +373,7 @@ const electronShim = (window.__ELECTRON_SHIM__ ??= {});
 const buildFlavor: "prod" | "dev" | "agent" | string = "prod";
 
 installMobileLayout(() => electronShim.closeSidebar?.());
-installTouchInteractions();
+installMobileInteractions();
 
 if (typeof globalThis.crypto.randomUUID !== "function") {
   // randomUUID is secure-context-only, but direct HTTP Tailnet addresses are

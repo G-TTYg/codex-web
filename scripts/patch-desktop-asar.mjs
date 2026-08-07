@@ -275,6 +275,58 @@ const appInitialPath = findAssetFile(
     text.includes("networkOverrideFunc:"),
   /^app-initial-.*\.js$/,
 );
+// Mobile actions have an explicit button and bottom-sheet presentation. The
+// upstream Radix trigger otherwise reserves the same touch sequence for a
+// delayed context menu, making a stationary scroll start ambiguous.
+replaceOneOfOnce(
+  appInitialPath,
+  [
+    {
+      before:
+        "onPointerDown:r?e.onPointerDown:cg(e.onPointerDown,Kvt(e=>{u(),l.current=window.setTimeout(()=>d(e),700)}))",
+      after:
+        "onPointerDown:r?e.onPointerDown:cg(e.onPointerDown,Kvt(()=>{u()}))",
+    },
+    {
+      before:
+        "onPointerDown:r?e.onPointerDown:ug(e.onPointerDown,Wvt(e=>{u(),l.current=window.setTimeout(()=>d(e),700)}))",
+      after:
+        "onPointerDown:r?e.onPointerDown:ug(e.onPointerDown,Wvt(()=>{u()}))",
+    },
+  ],
+  "context-menu touch long press disabled",
+);
+// The shared context-menu abstraction knows which renderer elements actually
+// own secondary actions. Mark both its native and browser branches so the
+// browser-owned mobile action layer can add one discoverable affordance without
+// guessing from fingerprinted CSS classes.
+replaceOnce(
+  appInitialPath,
+  "t[43]===P?n=t[44]:(n={onContextMenu:P},t[43]=P,t[44]=n)",
+  't[43]===P?n=t[44]:(n={"data-codex-context-target":`true`,onContextMenu:P},t[43]=P,t[44]=n)',
+  "native context-menu mobile target",
+);
+replaceOnce(
+  appInitialPath,
+  "t[48]===P?e=t[49]:(e={onContextMenu:P},t[48]=P,t[49]=e)",
+  't[48]===P?e=t[49]:(e={"data-codex-context-target":`true`,onContextMenu:P},t[48]=P,t[49]=e)',
+  "browser context-menu mobile target",
+);
+// The file tree owns a separate context menu and a separate long-press drag
+// implementation. Expose its actionable rows to the same mobile UI and remove
+// only the touch activator; mouse drag and right click remain upstream-owned.
+replaceOnce(
+  appInitialPath,
+  "targetPath:P}),key:n,onContextMenu:S||u?",
+  'targetPath:P}),key:n,"data-codex-context-target":S?`true`:void 0,onContextMenu:S||u?',
+  "file-tree mobile context target",
+);
+replaceOnce(
+  appInitialPath,
+  "onTouchStart:u&&!F?e=>{m(e,t,P)}:void 0",
+  "onTouchStart:void 0",
+  "file-tree touch drag disabled",
+);
 // dnd-kit activates its PointerSensor on pointerdown and then installs a
 // non-passive move listener that prevents native scrolling. Dragging is
 // intentionally mouse-only in the browser surface: reject touch, pen, and

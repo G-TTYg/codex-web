@@ -85,13 +85,18 @@ changing ordinary mouse-driven tablet-width windows.
 Outside-tap dismissal observes the real underlying target after a complete
 click and does not consume its pointer sequence, so links and controls remain
 first-tap operable while a drawer is open.
-`src/browser/touch-interactions.ts`
-preserves the renderer's Pointer Events while exposing hover-only actions on
-coarse pointers. On touch input, draggable rows are vertical scroll surfaces
-and HTML drag starts are cancelled. The shared semantic patcher makes dnd-kit's
-PointerSensor reject every non-mouse pointer without consuming the event, while
-the complete Projects subtree permits vertical panning. Native scrolling and
-row clicks remain intact; mouse input retains ordinary desktop dragging.
+`src/browser/mobile-interactions.ts` owns a separate mobile interaction layer
+instead of emulating Desktop gestures. The semantic patcher marks renderer
+context-menu owners; the browser layer adds one portal-based action button per
+visible target and collects hover-only controls into a touch-sized bottom
+sheet. Renderer-owned pointer menus use the same bottom-sheet presentation.
+The portal buttons listen only for completed clicks and permit `pan-y`, so a
+normal pointer sequence remains native scrolling or the row's primary action.
+The shared semantic patcher removes Radix touch long-press menus, disables the
+file tree's custom touch-drag activator, and makes dnd-kit's PointerSensor reject
+every non-mouse pointer without consuming its event. HTML drag starts are also
+cancelled while touch is the active input. Hardware mouse right click and mouse
+drag remain Desktop-owned on hybrid devices.
 Mobile search surfaces remain mounted when software-keyboard dismissal blurs
 their input. The server shim
 owns privileged host behavior such as filesystem access and launching the

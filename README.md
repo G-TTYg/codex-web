@@ -212,9 +212,9 @@ someone with access to the web UI may be able to:
   - inline images
   - editor sidepanel
   - transcription
-  - mobile and portrait-tablet overlay drawers plus touch affordances for
-    hover-only actions, scroll-only draggable rows, and keyboard-dismiss-safe
-    search
+  - a mobile and portrait-tablet interaction layer with explicit per-item
+    action buttons, bottom action sheets, native scrolling, touch-disabled
+    dragging, and keyboard-dismiss-safe search
 
 The platform build copies Computer Use and native-resource assets only from the
 same official Desktop Resources directory used for extraction. Electron-native
