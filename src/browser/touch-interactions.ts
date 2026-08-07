@@ -1,9 +1,10 @@
 const TOUCH_INPUT_ATTRIBUTE = "data-codex-touch-input";
 const TOUCH_DRAGGING_ATTRIBUTE = "data-codex-touch-dragging";
 
-const DRAG_ACTIVATION_DELAY_MS = 280;
+const DRAG_ACTIVATION_DELAY_MS = 400;
 const LONG_PRESS_DELAY_MS = 650;
-const MOVE_TOLERANCE_PX = 10;
+const PRE_HOLD_MOVE_TOLERANCE_PX = 4;
+const DRAG_START_DISTANCE_PX = 12;
 const CLICK_SUPPRESSION_MS = 800;
 
 const TOUCH_STYLES = `
@@ -453,7 +454,19 @@ function onPointerMove(event: PointerEvent): void {
     return;
   }
 
-  if (gesture.draggable && gesture.dragReady && distance > MOVE_TOLERANCE_PX) {
+  if (!gesture.dragReady && distance > PRE_HOLD_MOVE_TOLERANCE_PX) {
+    // A drag must begin with a stationary hold. Cancelling as soon as a touch
+    // starts travelling prevents slow scrolling from becoming a drag merely
+    // because the activation timer expires before the scroll crosses 10 px.
+    clearGesture();
+    return;
+  }
+
+  if (
+    gesture.draggable &&
+    gesture.dragReady &&
+    distance > DRAG_START_DISTANCE_PX
+  ) {
     clearTimer(gesture.longPressTimer);
     gesture.longPressTimer = null;
     gesture.dragSession = startDrag(gesture, event);
@@ -464,12 +477,6 @@ function onPointerMove(event: PointerEvent): void {
       updateDrag(gesture.dragSession, event);
       return;
     }
-  }
-
-  if (distance > MOVE_TOLERANCE_PX) {
-    // Movement before the hold delay belongs to native page/panel scrolling.
-    // Do not reserve every draggable row as a gesture-only touch surface.
-    clearGesture();
   }
 }
 
