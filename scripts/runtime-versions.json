@@ -12,16 +12,36 @@
   },
   "codexCli": {
     "version": "0.147.0-alpha.1.2",
-    "windows": {
-      "x64": {
-        "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-alpha.1.2-win32-x64.tgz",
-        "integrity": "sha512-55hu2v/IyQ8Z1oViIqrdhTs6w4A3DNqyYHY7IjuFVWsxolRNfzx56xpaaC77CUIvSlF+4DL6nNwLEJur4/8WRA==",
-        "triple": "x86_64-pc-windows-msvc"
+    "artifacts": {
+      "darwin": {
+        "arm64": {
+          "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-alpha.1.2-darwin-arm64.tgz",
+          "integrity": "sha512-f0+t0R77PFu0sG3WH67pDNIslePbua7grhxFIkAeatWnSxHq7XRYuK1VCg/2QtBYR3KYYPd3D6XjNMDgwu04Ag=="
+        },
+        "x64": {
+          "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-alpha.1.2-darwin-x64.tgz",
+          "integrity": "sha512-Ig64tM9JMxIFeltnDjuD0AQsmT0Ef19UWyGlgLhmBNzr5LeZceds0NsvJPcOwtuKZkkmcJugtcdDs0+WWM5s6g=="
+        }
       },
-      "arm64": {
-        "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-alpha.1.2-win32-arm64.tgz",
-        "integrity": "sha512-itZAtO9KlCV/XbPe9qNmYWL6mOY92crYFcCO4KudWQzzcNQLOE3YrwU7bxp2YujzZRVLxLZiJUHaYZ1kZGsY6Q==",
-        "triple": "aarch64-pc-windows-msvc"
+      "linux": {
+        "arm64": {
+          "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-alpha.1.2-linux-arm64.tgz",
+          "integrity": "sha512-BTpVNF/jLO3K9FYxNHUg8PdukPphff967A4lvED+mxbPpFYE2K7ZWSS1P3zzdueO3wtrhQJfTK6904z28I3Vow=="
+        },
+        "x64": {
+          "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-alpha.1.2-linux-x64.tgz",
+          "integrity": "sha512-hXqsBa8SWyP8E8BwI+bwaSV2PeRyoHTbaKttNbsOtysJWXX6KqFxSIZcO3TfwsLvHS5tY9b96T/QFtliHepF4w=="
+        }
+      },
+      "win32": {
+        "arm64": {
+          "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-alpha.1.2-win32-arm64.tgz",
+          "integrity": "sha512-itZAtO9KlCV/XbPe9qNmYWL6mOY92crYFcCO4KudWQzzcNQLOE3YrwU7bxp2YujzZRVLxLZiJUHaYZ1kZGsY6Q=="
+        },
+        "x64": {
+          "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-alpha.1.2-win32-x64.tgz",
+          "integrity": "sha512-55hu2v/IyQ8Z1oViIqrdhTs6w4A3DNqyYHY7IjuFVWsxolRNfzx56xpaaC77CUIvSlF+4DL6nNwLEJur4/8WRA=="
+        }
       }
     }
   }

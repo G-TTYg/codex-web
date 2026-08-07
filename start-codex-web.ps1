@@ -12,29 +12,19 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-Location -LiteralPath $PSScriptRoot
-. (Join-Path $PSScriptRoot "scripts\windows-runtime.ps1")
-$runtimeManifest = Get-CodexWebRuntimeManifest
 
 function Ensure-CodexWebBuild {
   param(
-    [object]$Manifest,
     [string]$ExplicitCodexPath,
     [string]$Proxy
   )
 
   $serverEntry = Join-Path $PSScriptRoot "src\server\main.js"
   $webviewEntry = Join-Path $PSScriptRoot "scratch\asar\webview\index.html"
-  $pinnedCodexEntry = Get-CodexWebPinnedCliPath -Manifest $Manifest
   $hasRuntime = [bool]$ExplicitCodexPath
   if (-not $hasRuntime) {
-    try {
-      Assert-CodexWebPinnedCliVersion `
-        -CodexPath $pinnedCodexEntry `
-        -ExpectedVersion ([string]$Manifest.codexCli.version)
-      $hasRuntime = $true
-    } catch {
-      $hasRuntime = $false
-    }
+    & node .\scripts\managed-runtime.mjs resolve *> $null
+    $hasRuntime = $LASTEXITCODE -eq 0
   }
   if ((Test-Path -LiteralPath $serverEntry) -and (Test-Path -LiteralPath $webviewEntry) -and $hasRuntime) {
     return
@@ -159,10 +149,7 @@ function Get-TailscaleInfo {
 }
 
 function Resolve-CodexCliPath {
-  param(
-    [string]$ExplicitPath,
-    [object]$Manifest
-  )
+  param([string]$ExplicitPath)
 
   if ($ExplicitPath) {
     $resolvedPath = (Resolve-Path -LiteralPath $ExplicitPath -ErrorAction Stop).ProviderPath
@@ -175,12 +162,12 @@ function Resolve-CodexCliPath {
     return $resolvedPath
   }
 
-  $pinnedPath = Get-CodexWebPinnedCliPath -Manifest $Manifest
-  Assert-CodexWebPinnedCliVersion `
-    -CodexPath $pinnedPath `
-    -ExpectedVersion ([string]$Manifest.codexCli.version)
-  Write-Host "Using repository-pinned Codex CLI version: $($Manifest.codexCli.version)"
-  return $pinnedPath
+  $pinnedPath = (& node .\scripts\managed-runtime.mjs resolve 2>$null | Select-Object -Last 1)
+  if ($LASTEXITCODE -ne 0 -or -not $pinnedPath) {
+    throw "The repository-pinned Codex CLI is missing or invalid. Re-run setup-windows.ps1."
+  }
+  Write-Host "Using repository-pinned Codex CLI."
+  return ([string]$pinnedPath).Trim()
 }
 
 function Show-CodexWebLinks {
@@ -225,7 +212,7 @@ function Get-PortListener {
     Select-Object -First 1
 }
 
-Ensure-CodexWebBuild -Manifest $runtimeManifest -ExplicitCodexPath $CodexPath -Proxy $DownloadProxy
+Ensure-CodexWebBuild -ExplicitCodexPath $CodexPath -Proxy $DownloadProxy
 
 $tailscaleInfo = Get-TailscaleInfo `
   -ExplicitPath $TailscalePath `
@@ -250,11 +237,11 @@ if ($existingListeners.Count -gt 0) {
   throw "Port $Port is already in use by PID $($listener.OwningProcess). Stop that process or choose another -Port."
 }
 
-$CodexPath = Resolve-CodexCliPath -ExplicitPath $CodexPath -Manifest $runtimeManifest
+$CodexPath = Resolve-CodexCliPath -ExplicitPath $CodexPath
 $env:CODEX_CLI_PATH = $CodexPath
 
 Write-Host "Using Codex CLI: $env:CODEX_CLI_PATH"
 Write-Host ("Listening on {0}:{1}" -f $HostName, $Port)
 Show-CodexWebLinks -ListenHost $HostName -ListenPort $Port -TailscaleInfo $tailscaleInfo
 
-node .\src\server\main.js --host $HostName --port $Port
+node .\scripts\run-server.mjs --host $HostName --port $Port

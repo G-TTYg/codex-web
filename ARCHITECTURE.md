@@ -52,13 +52,18 @@ owns privileged host behavior such as filesystem access and launching the Codex
 app-server. Platform-specific Appx/zip discovery never enters this runtime IPC
 layer.
 
-On Windows, `scripts/windows-runtime.ps1` independently downloads the pinned
-x64 or arm64 Codex CLI tarball from the official npm registry, validates its
-SRI SHA-512 value, and extracts it below `scratch/runtime/`. The launcher uses
-that path by default instead of scanning the Desktop runtime or `PATH`.
-`-CodexPath` remains an explicit override. No `CODEX_HOME` override is applied,
-so the project-local executable shares the host's normal account,
-configuration, and data directories.
+On every ordinary host, `scripts/managed-runtime.mjs` chooses the pinned Codex
+CLI artifact by OS and architecture, validates its npm SRI SHA-512 value, and
+extracts it below `scratch/runtime/`. `scripts/run-server.mjs` is both the npm
+binary and server entry point; it prepares the runtime when missing and then
+sets `CODEX_CLI_PATH` for the compiled server. Windows PowerShell uses the same
+manager. Explicit `CODEX_CLI_PATH`/`-CodexPath` values remain overrides. No
+`CODEX_HOME` override is applied, so the managed executable shares the host's
+normal account, configuration, and data directories.
+
+Nix reads the same manifest artifacts but preserves reproducibility by fetching
+the CLI into the Nix store and wrapping `codex-web` with that store path. Runtime
+download caches and extracted binaries are never included in npm packages.
 
 ## Version contracts
 

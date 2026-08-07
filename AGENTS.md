@@ -26,6 +26,8 @@
   bundles.
 - `scripts/patch-desktop-asar.mjs` is the single shared, fail-closed semantic
   patch implementation for all hosts.
+- `scripts/managed-runtime.mjs` owns pinned CLI acquisition and validation for
+  ordinary Windows, macOS, and Linux workflows.
 - `assets/` contains project-owned PWA assets copied into generated webviews.
 - `scratch/` and compiled JavaScript under `src/server/` are generated and must
   not be committed.
@@ -35,8 +37,8 @@
 - Treat macOS Sparkle version, Windows Appx version, extracted ASAR version,
   Electron version, and Codex CLI version as independent values.
 - Keep default runtime versions and official artifact integrity values in
-  `scripts/runtime-versions.json`. Windows must not silently replace a pinned
-  Appx or CLI with the newest locally installed version.
+  `scripts/runtime-versions.json`. No platform may silently replace a pinned
+  CLI with the newest locally installed version; Windows also pins its Appx.
 - Use only official OpenAI Desktop distributions as extraction sources.
 - Validate ASAR metadata before patching. Never silently continue after an
   expected semantic anchor or patch hunk is missing or ambiguous.

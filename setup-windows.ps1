@@ -9,7 +9,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-Location -LiteralPath $PSScriptRoot
-. (Join-Path $PSScriptRoot "scripts\windows-runtime.ps1")
 
 $setupLockHashBytes = [System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($PSScriptRoot.ToLowerInvariant()))
 $setupLockHash = -join ($setupLockHashBytes | ForEach-Object { $_.ToString("x2") })
@@ -165,7 +164,7 @@ if (-not (Test-Path -LiteralPath "package.json")) {
 
 $node = Resolve-RequiredCommand -Names @("node.exe", "node") -ErrorMessage "Could not find Node.js. Install Node.js 22.12+ and re-run setup-windows.bat."
 $npm = Resolve-RequiredCommand -Names @("npm.cmd", "npm") -ErrorMessage "Could not find npm. Install Node.js and re-run setup-windows.bat."
-$runtimeManifest = Get-CodexWebRuntimeManifest
+$runtimeManifest = Get-Content -LiteralPath "scripts\runtime-versions.json" -Raw | ConvertFrom-Json
 if (($UseNewestInstalledDesktop -and $AppVersion) -or ($AppAsarPath -and ($UseNewestInstalledDesktop -or $AppVersion))) {
   throw "Use only one Desktop source override: -AppAsarPath, -AppVersion, or -UseNewestInstalledDesktop."
 }
@@ -197,8 +196,11 @@ if (-not $SkipInstall) {
 
 if (-not $SkipPinnedCli) {
   Invoke-Step "Prepare pinned Codex CLI" {
-    $pinnedCodexPath = Initialize-CodexWebPinnedCli -Manifest $runtimeManifest -Proxy $DownloadProxy
-    Write-Host "Pinned Codex CLI: $pinnedCodexPath"
+    $runtimeArguments = @(".\scripts\managed-runtime.mjs", "prepare")
+    if ($DownloadProxy) {
+      $runtimeArguments += @("--proxy", $DownloadProxy)
+    }
+    Invoke-NativeCommand -FilePath $node -Arguments $runtimeArguments -Name "prepare pinned Codex CLI"
     Write-Host "Pinned Codex version: $($runtimeManifest.codexCli.version)"
   }
 }

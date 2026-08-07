@@ -19,18 +19,19 @@ The current compatibility target is:
 | Desktop renderer / ASAR                     | `26.730.61639`                 |
 | Electron contract                           | `42.3.0`                       |
 | Windows Store package used for verification | `OpenAI.Codex 26.730.8199.0`   |
-| Codex CLI pinned by Windows and Nix         | `0.147.0-alpha.1.2`            |
+| Codex CLI pinned on all supported hosts     | `0.147.0-alpha.1.2`            |
 
 The Windows Appx version, ASAR version, Electron version, and Codex CLI version
 are separate version layers. Defaults live in `scripts/runtime-versions.json`.
-Windows requires the pinned Appx version and downloads the pinned platform CLI
-into the ignored `scratch/runtime/` tree with SHA-512 verification. It does not
-silently select the newest local Desktop package or CLI from `PATH`.
+All ordinary Git/npm workflows download the pinned platform CLI into the
+ignored `scratch/runtime/` tree with SHA-512 verification. They do not silently
+select a newer local CLI from `PATH`. Windows additionally requires the pinned
+Appx version.
 
 ## Requirements
 
 - Node.js 22.12 or newer and npm.
-- A signed-in Codex account (`codex login --device-auth`). The pinned CLI uses
+- A signed-in Codex account (`codex login --device-auth`). The managed CLI uses
   the normal host configuration/data directories unless you override them.
 - Windows: the pinned ChatGPT-branded Codex workspace Appx from Microsoft
   Store, unless an explicit `app.asar` or Desktop override is supplied.
@@ -61,7 +62,7 @@ Useful Windows options:
 # Explicitly test the newest installed Store package instead of the pin.
 .\setup-windows.ps1 -UseNewestInstalledDesktop
 
-# Use an explicit CLI instead of the downloaded project pin.
+# Use an explicit CLI instead of the managed project pin.
 .\start-codex-web.ps1 -CodexPath C:\path\to\codex.exe
 
 # Route the pinned CLI download through a proxy.
@@ -100,12 +101,15 @@ git clone https://github.com/G-TTYg/codex-web.git
 cd codex-web
 npm ci --ignore-scripts
 npm run build
-CODEX_CLI_PATH="$(command -v codex)" npm run server
+npm run server
 ```
 
-Open <http://127.0.0.1:8214>. macOS and Linux use the official macOS Desktop zip
-as the renderer source; the renderer is architecture-independent and the Codex
-CLI still runs natively on the host.
+Open <http://127.0.0.1:8214>. macOS and Linux use the pinned official macOS
+Desktop zip as the renderer source and download the pinned native CLI for the
+host architecture. Set `CODEX_CLI_PATH=/absolute/path/to/codex` only when an
+explicit local override is desired. `CODEX_WEB_DOWNLOAD_PROXY` configures the
+managed download proxy, and `CODEX_WEB_RUNTIME_DIR` changes its extraction
+directory.
 
 Nix users can run:
 
@@ -157,9 +161,10 @@ Generated Desktop files live under `scratch/` and are never committed. See
 
 ## 中文说明
 
-Windows 默认使用 `scripts/runtime-versions.json` 中固定的 Desktop Appx 和 Codex
-CLI 版本；CLI 下载到项目的 `scratch/runtime/`，不会自动使用本机 PATH 中的新版，
-但仍共用默认账号、配置和数据目录。安装清单指定的 Microsoft Store 版本后，依次
+三平台默认使用 `scripts/runtime-versions.json` 中固定的 Codex CLI，并按系统与架构
+下载到项目的 `scratch/runtime/`；不会自动使用本机 PATH 中的新版，但仍共用默认
+账号、配置和数据目录。Windows 还固定 Desktop Appx 版本。安装清单指定的
+Microsoft Store 版本后，依次
 运行 `setup-windows.bat` 和 `start-codex-web.bat` 即可。默认只监听本机
 `127.0.0.1:8214`；需要在 Tailnet 内访问时，请显式使用
 `start-codex-web.ps1 -PreferTailscale`。非默认安装可追加 `-TailscalePath`、

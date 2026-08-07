@@ -19,17 +19,17 @@ matrix to the dated project log before changing compatibility code.
 
 Update:
 
-- Desktop, Windows Appx, Electron, CLI versions, URLs, and Windows integrity
-  values in `scripts/runtime-versions.json`;
+- Desktop, Windows Appx, Electron, CLI versions, URLs, and integrity values for
+  all supported OS/architecture pairs in `scripts/runtime-versions.json`;
 - the project Electron development dependency when ASAR metadata changes; and
 - the per-platform Nix CLI hashes when the pinned CLI changes.
 
 The Homebrew `chatgpt` cask is a useful independent source for official macOS
 zip versions and SHA-256 values. Convert the hex digest to an SRI hash or run
 `nix hash file` against the downloaded archive. npm registry integrity values
-can be used directly as SRI hashes for the platform Codex CLI tarballs. Windows
-setup supports x64 and arm64 descriptors and rejects a download whose SRI value
-differs from the manifest.
+can be used directly as SRI hashes for the platform Codex CLI tarballs. The
+shared runtime manager supports macOS, Linux, and Windows x64/arm64 descriptors
+and rejects a download whose SRI value differs from the manifest.
 
 Do not assume the Windows Appx version equals the version inside `app.asar`.
 
@@ -104,10 +104,11 @@ Exercise Windows natively and at least one Unix build path before release. If a
 macOS or Linux runtime is unavailable, report that limitation explicitly; a
 successful shared ASAR build is not a native runtime test.
 
-Also move the ignored `scratch/runtime/codex/<old-version>` directory out of the
-way and run the default Windows setup. Confirm it downloads the pinned CLI for
-the host architecture, verifies the archive, reports the exact version, and
-starts without consulting a newer `codex.exe` on `PATH`.
+On every available native host, move the ignored
+`scratch/runtime/codex/<old-version>` directory out of the way and run the
+default build/start workflow. Confirm it downloads the pinned CLI for the host
+architecture, verifies the archive, reports the exact version, and starts
+without consulting a newer `codex` on `PATH`.
 
 ## 6. Close the upgrade
 

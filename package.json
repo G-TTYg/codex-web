@@ -3,12 +3,15 @@
   "version": "0.0.1",
   "files": [
     "README.md",
+    "scripts/managed-runtime.mjs",
+    "scripts/run-server.mjs",
+    "scripts/runtime-versions.json",
     "scratch/asar/**/*",
     "src/server/**/*.js",
     "src/server/electron/index.js",
     "!**/*.ts"
   ],
-  "bin": "src/server/main.js",
+  "bin": "scripts/run-server.mjs",
   "scripts": {
     "prepare": "node ./scripts/prepare-package.mjs",
     "build": "node ./scripts/prepare-package.mjs",
@@ -20,7 +23,7 @@
     "prepare:asar": "bash ./scripts/prepare_asar",
     "setup:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./setup-windows.ps1",
     "preserver": "npm run build:server && npm run build:browser",
-    "server": "node src/server/main.js"
+    "server": "node scripts/run-server.mjs"
   },
   "repository": "https://github.com/G-TTYg/codex-web.git",
   "author": "martin <martincharles07@gmail.com>",

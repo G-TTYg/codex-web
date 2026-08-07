@@ -89,6 +89,7 @@ flake-utils.lib.eachSystem systems (
       {
         default = pkgs.buildNpmPackage {
           HOSTED_CODEX_APP_ZIP = codexZip;
+          CODEX_CLI_PATH = "${codex}/bin/codex";
 
           pname = "codex-web";
           version = "1.0.0";
@@ -102,6 +103,7 @@ flake-utils.lib.eachSystem systems (
           npmPruneFlags = [ "--ignore-scripts" ];
 
           nativeBuildInputs = [
+            pkgs.makeWrapper
             pkgs.unzip
           ];
 
@@ -128,6 +130,7 @@ flake-utils.lib.eachSystem systems (
             addon="$out/lib/node_modules/codex-web/node_modules/better-sqlite3"
             rm -rf "$addon/build"
             ln -s ${betterSqlite3Native}/build "$addon/build"
+            wrapProgram "$out/bin/codex-web" --set CODEX_CLI_PATH ${codex}/bin/codex
           '';
         };
 
