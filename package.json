@@ -21,6 +21,7 @@
     "dev:browser": "vite --config vite.browser.config.mjs",
     "build:browser": "vite build --config vite.browser.config.mjs",
     "build:server": "cd src/server && tsc",
+    "rebuild:native": "npm rebuild better-sqlite3 node-pty",
     "prepare:asar": "bash ./scripts/unix/prepare-asar.sh",
     "preserver": "npm run build:server && npm run build:browser",
     "server": "node scripts/run-server.mjs"
@@ -37,6 +38,7 @@
     "better-sqlite3": "^12.9.0",
     "fastify": "^5.11.2",
     "glob": "^13.0.6",
+    "node-pty": "^1.1.0",
     "prettier": "^3.8.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

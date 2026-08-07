@@ -183,15 +183,27 @@ Write-Host "Using ChatGPT Desktop app.asar: $($chatGPTDesktopAsar.Path)"
 Write-Host "Desktop package source: $($chatGPTDesktopAsar.Source)"
 
 if (-not $SkipInstall) {
+  Invoke-Step "Check native modules are not in use" {
+    Assert-FileNotLocked `
+      -Path "node_modules\better-sqlite3\build\Release\better_sqlite3.node" `
+      -ErrorMessage "The current codex-web server is still using a native module. Close its console window or stop that project server, then run setup again."
+    Assert-FileNotLocked `
+      -Path "node_modules\node-pty\build\Release\conpty.node" `
+      -ErrorMessage "The current codex-web server is still using a native module. Close its console window or stop that project server, then run setup again."
+    Get-ChildItem -Path "node_modules\node-pty\prebuilds\win32-*\conpty.node" -File -ErrorAction SilentlyContinue |
+      ForEach-Object {
+        Assert-FileNotLocked `
+          -Path $_.FullName `
+          -ErrorMessage "The current codex-web server is still using a native module. Close its console window or stop that project server, then run setup again."
+      }
+  }
+
   Invoke-Step "Install npm dependencies" {
     Invoke-NativeCommand -FilePath $npm -Arguments @("ci", "--ignore-scripts") -Name "npm ci"
   }
 
   Invoke-Step "Rebuild native modules" {
-    Assert-FileNotLocked `
-      -Path "node_modules\better-sqlite3\build\Release\better_sqlite3.node" `
-      -ErrorMessage "The current codex-web server is still using better_sqlite3.node. Close its console window or stop that project server, then run setup again."
-    Invoke-NativeCommand -FilePath $npm -Arguments @("rebuild", "better-sqlite3") -Name "npm rebuild better-sqlite3"
+    Invoke-NativeCommand -FilePath $npm -Arguments @("run", "rebuild:native") -Name "npm run rebuild:native"
   }
 }
 
@@ -262,7 +274,9 @@ Invoke-Step "Apply ChatGPT Desktop patches" {
     $desktopAppVersion
   ) -Name "patch-desktop-asar"
 
-  Remove-Item -LiteralPath "scratch\asar\node_modules\better-sqlite3" -Recurse -Force -ErrorAction SilentlyContinue
+  foreach ($nativeModule in @("better-sqlite3", "node-pty")) {
+    Remove-Item -LiteralPath "scratch\asar\node_modules\$nativeModule" -Recurse -Force -ErrorAction SilentlyContinue
+  }
 }
 
 Invoke-Step "Build browser bundle" {

@@ -33,8 +33,11 @@ consume `HOSTED_CODEX_APP_ZIP` when supplied. Both paths converge on:
 - the shared browser and server builds.
 
 Selective extraction intentionally omits upstream native modules. The Desktop
-shell only leaves `better-sqlite3` external in the supported bundle, and the
-project supplies a host-native build of that dependency.
+shell leaves `better-sqlite3` and `node-pty` external in the supported bundle,
+and the project supplies host-native builds of both dependencies. This keeps
+the database and terminal addons compatible with the Node runtime that hosts
+the browser bridge instead of copying Electron-targeted binaries from an Appx
+or macOS bundle.
 
 ## Runtime flow
 
@@ -69,8 +72,10 @@ row clicks remain intact; mouse input retains ordinary desktop dragging.
 Mobile search surfaces remain mounted when software-keyboard dismissal blurs
 their input. The server shim
 owns privileged host behavior such as filesystem access and launching the
-Codex app-server. Platform-specific Appx/zip discovery never enters this
-runtime IPC layer.
+Codex app-server. Terminal creation remains in the official Desktop shell and
+resolves the project-owned `node-pty` installation through Node's normal module
+lookup. Platform-specific Appx/zip discovery never enters this runtime IPC
+layer.
 
 On every ordinary host, `scripts/managed-runtime.mjs` chooses the pinned Codex
 CLI artifact by OS and architecture, validates its npm SRI SHA-512 value, and

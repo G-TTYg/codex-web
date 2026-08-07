@@ -85,6 +85,11 @@ syntax-highlighter regular expressions, local file URLs, Statsig network
 isolation, URL prompt prefill, browser titles, PWA/preload markup, and Sentry
 disablement in renderer, worker, and shell bundles.
 
+Compare the extracted Desktop package's `better-sqlite3` and `node-pty`
+dependency ranges with `package.json` during every upgrade. These modules are
+not copied from the Desktop distribution: codex-web installs and rebuilds them
+for its host Node runtime.
+
 ## 5. Verify by increasing scope
 
 Run the host-specific complete build:
@@ -97,6 +102,8 @@ npm run build
 Then verify:
 
 - metadata and brand validation succeeded;
+- `npm ls better-sqlite3 node-pty --depth=0` reports the expected host-native
+  versions;
 - every semantic transform reported success with no skipped assertion;
 - browser and server builds completed;
 - the server starts and `/` plus the WebSocket endpoint are reachable;
@@ -109,6 +116,7 @@ Then verify:
   native Projects scrolling from nested row controls, scroll-only non-mouse
   draggable rows, and mouse dragging work;
 - file/workspace pickers and inline images work; and
+- a terminal can be created, resized, written to, closed, and reopened; and
 - subagent/app-host MessagePort traffic still works.
 
 Exercise Windows natively and at least one Unix build path before release. If a

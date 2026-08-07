@@ -203,6 +203,7 @@ someone with access to the web UI may be able to:
 - thin wrapper, so updates should land fast
 - working today:
   - subagents and app-host MessagePort forwarding
+  - host-native terminal sessions
   - inline images
   - editor sidepanel
   - transcription
@@ -231,7 +232,6 @@ some parts of the desktop experience are not wired up yet:
 
 - browser panel support, likely rebuilt around iframes
 - computer use on linux, which could become a very powerful feature
-- terminal support
 - git worker integration
 - whatever else people find and file issues for
 

@@ -41,6 +41,12 @@ if (process.platform === "win32") {
   if (process.env.CODEX_CLI_PATH) setupArguments.push("-SkipPinnedCli");
   run("powershell.exe", setupArguments);
 } else {
+  // `npm ci --ignore-scripts` intentionally skips both native addons. A
+  // direct build must restore them for the host Node runtime; during npm's
+  // prepare lifecycle their dependency install scripts have already run.
+  if (process.env.npm_lifecycle_event !== "prepare") {
+    run("npm", ["run", "rebuild:native"]);
+  }
   if (!process.env.CODEX_CLI_PATH) {
     run("node", ["./scripts/managed-runtime.mjs", "prepare"]);
   }
