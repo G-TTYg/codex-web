@@ -104,7 +104,8 @@ Then verify:
 - prompt prefill and browser navigation work;
 - the narrow-viewport left and right overlay drawers, outside-tap dismissal,
   unchanged application-menu/header controls, opaque panel surfaces, touch
-  composer, long-press context menus, hover-only actions, and touch dragging
+  composer, keyboard-dismiss-safe search, hover-only actions, native scrolling,
+  and stationary-hold touch dragging
   work;
 - file/workspace pickers and inline images work; and
 - subagent/app-host MessagePort traffic still works.

@@ -1,9 +1,8 @@
 const TOUCH_INPUT_ATTRIBUTE = "data-codex-touch-input";
 const TOUCH_DRAGGING_ATTRIBUTE = "data-codex-touch-dragging";
 
-const DRAG_ACTIVATION_DELAY_MS = 400;
-const LONG_PRESS_DELAY_MS = 650;
-const PRE_HOLD_MOVE_TOLERANCE_PX = 4;
+const DRAG_ACTIVATION_DELAY_MS = 500;
+const PRE_HOLD_MOVE_TOLERANCE_PX = 6;
 const DRAG_START_DISTANCE_PX = 12;
 const CLICK_SUPPRESSION_MS = 800;
 
@@ -67,13 +66,10 @@ type DragSession = {
 };
 
 type PointerGesture = {
-  contextTarget: HTMLElement | null;
   dragReady: boolean;
   dragReadyTimer: number | null;
   dragSession: DragSession | null;
-  draggable: HTMLElement | null;
-  longPressHandled: boolean;
-  longPressTimer: number | null;
+  draggable: HTMLElement;
   pointerId: number;
   startX: number;
   startY: number;
@@ -104,27 +100,6 @@ function installTouchStyles(): void {
   style.dataset.codexTouchInteractions = "true";
   style.textContent = TOUCH_STYLES;
   (document.head ?? document.documentElement).append(style);
-}
-
-function isEditableTarget(target: Element): boolean {
-  return (
-    target.closest(
-      'input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"]',
-    ) !== null
-  );
-}
-
-function findContextTarget(target: Element): HTMLElement | null {
-  if (
-    isEditableTarget(target) ||
-    target.closest("[data-file-tree-virtualized-root]")
-  ) {
-    return null;
-  }
-
-  return target.closest<HTMLElement>(
-    'button, a, [role="button"], [role="treeitem"], [aria-haspopup="menu"], [draggable="true"]',
-  );
 }
 
 function findNativeDraggable(target: Element): HTMLElement | null {
@@ -337,7 +312,6 @@ function clearGesture(pointerEvent?: PointerEvent, drop = false): void {
   }
 
   clearTimer(gesture.dragReadyTimer);
-  clearTimer(gesture.longPressTimer);
   if (gesture.dragSession) {
     if (pointerEvent) {
       finishDrag(gesture.dragSession, pointerEvent, drop);
@@ -347,41 +321,6 @@ function clearGesture(pointerEvent?: PointerEvent, drop = false): void {
     }
   }
   activeGesture = null;
-}
-
-function dispatchLongPressContextMenu(
-  gesture: PointerGesture,
-  pointerEvent: PointerEvent,
-): void {
-  const target = gesture.contextTarget;
-  if (!target || activeGesture !== gesture) {
-    return;
-  }
-
-  const contextMenuEvent = new MouseEvent("contextmenu", {
-    bubbles: true,
-    button: 2,
-    buttons: 0,
-    cancelable: true,
-    clientX: pointerEvent.clientX,
-    clientY: pointerEvent.clientY,
-    composed: true,
-    screenX: pointerEvent.screenX,
-    screenY: pointerEvent.screenY,
-    view: window,
-  });
-  const handled = !target.dispatchEvent(contextMenuEvent);
-  if (!handled) {
-    return;
-  }
-
-  gesture.longPressHandled = true;
-  clearTimer(gesture.dragReadyTimer);
-  gesture.dragReady = false;
-  suppressedActivation = {
-    expiresAt: Date.now() + CLICK_SUPPRESSION_MS,
-    target,
-  };
 }
 
 function onPointerDown(event: PointerEvent): void {
@@ -401,39 +340,27 @@ function onPointerDown(event: PointerEvent): void {
     return;
   }
 
-  const contextTarget = findContextTarget(eventTarget);
   const draggable = findNativeDraggable(eventTarget);
-  if (!contextTarget && !draggable) {
+  if (!draggable) {
     return;
   }
 
   const gesture: PointerGesture = {
-    contextTarget,
     dragReady: false,
     dragReadyTimer: null,
     dragSession: null,
     draggable,
-    longPressHandled: false,
-    longPressTimer: null,
     pointerId: event.pointerId,
     startX: event.clientX,
     startY: event.clientY,
   };
   activeGesture = gesture;
 
-  if (draggable) {
-    gesture.dragReadyTimer = window.setTimeout(() => {
-      if (activeGesture === gesture) {
-        gesture.dragReady = true;
-      }
-    }, DRAG_ACTIVATION_DELAY_MS);
-  }
-
-  if (contextTarget) {
-    gesture.longPressTimer = window.setTimeout(() => {
-      dispatchLongPressContextMenu(gesture, event);
-    }, LONG_PRESS_DELAY_MS);
-  }
+  gesture.dragReadyTimer = window.setTimeout(() => {
+    if (activeGesture === gesture) {
+      gesture.dragReady = true;
+    }
+  }, DRAG_ACTIVATION_DELAY_MS);
 }
 
 function onPointerMove(event: PointerEvent): void {
@@ -455,20 +382,13 @@ function onPointerMove(event: PointerEvent): void {
   }
 
   if (!gesture.dragReady && distance > PRE_HOLD_MOVE_TOLERANCE_PX) {
-    // A drag must begin with a stationary hold. Cancelling as soon as a touch
-    // starts travelling prevents slow scrolling from becoming a drag merely
-    // because the activation timer expires before the scroll crosses 10 px.
+    // Movement before the stationary hold completes always belongs to native
+    // scrolling. The drag bridge must never reinterpret an active scroll.
     clearGesture();
     return;
   }
 
-  if (
-    gesture.draggable &&
-    gesture.dragReady &&
-    distance > DRAG_START_DISTANCE_PX
-  ) {
-    clearTimer(gesture.longPressTimer);
-    gesture.longPressTimer = null;
+  if (gesture.dragReady && distance > DRAG_START_DISTANCE_PX) {
     gesture.dragSession = startDrag(gesture, event);
     if (gesture.dragSession) {
       if (event.cancelable) {
@@ -519,23 +439,6 @@ function onClick(event: MouseEvent): void {
   }
 }
 
-function onNativeContextMenu(event: MouseEvent): void {
-  const suppressed = suppressedActivation;
-  if (
-    !event.isTrusted ||
-    !suppressed ||
-    Date.now() > suppressed.expiresAt ||
-    !(event.target instanceof Node) ||
-    (!suppressed.target.contains(event.target) &&
-      !event.target.contains(suppressed.target))
-  ) {
-    return;
-  }
-
-  event.preventDefault();
-  event.stopImmediatePropagation();
-}
-
 export function installTouchInteractions(): void {
   if (installed) {
     return;
@@ -562,7 +465,6 @@ export function installTouchInteractions(): void {
   document.addEventListener("pointercancel", onPointerCancel, true);
   document.addEventListener("lostpointercapture", onPointerCancel, true);
   document.addEventListener("click", onClick, true);
-  document.addEventListener("contextmenu", onNativeContextMenu, true);
   window.addEventListener("blur", () => clearGesture());
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") {

@@ -207,7 +207,7 @@ someone with access to the web UI may be able to:
   - editor sidepanel
   - transcription
   - mobile overlay drawers plus touch affordances for hover-only actions,
-    long-press context menus, and native drag sources
+    stationary-hold native drag sources, and keyboard-dismiss-safe search
 
 ## development and upgrades
 

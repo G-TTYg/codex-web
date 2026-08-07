@@ -55,11 +55,13 @@ left and right sidebars into opaque overlay drawers, preserves the renderer's
 application-menu/header layout, and owns outside-tap dismissal.
 `src/browser/touch-interactions.ts`
 preserves the renderer's Pointer Events and dedicated file-tree gestures while
-exposing hover-only actions on coarse pointers, mapping handled long presses to
-context-menu events, and bridging native HTML drag sources that lack a touch
-path. The server shim owns privileged host behavior such as filesystem access
-and launching the Codex app-server. Platform-specific Appx/zip discovery never
-enters this runtime IPC layer.
+exposing hover-only actions on coarse pointers and bridging native HTML drag
+sources that lack a touch path. The bridge gives native scrolling priority and
+only begins dragging after a stationary hold. Mobile search surfaces remain
+mounted when software-keyboard dismissal blurs their input. The server shim
+owns privileged host behavior such as filesystem access and launching the
+Codex app-server. Platform-specific Appx/zip discovery never enters this
+runtime IPC layer.
 
 On every ordinary host, `scripts/managed-runtime.mjs` chooses the pinned Codex
 CLI artifact by OS and architecture, validates its npm SRI SHA-512 value, and

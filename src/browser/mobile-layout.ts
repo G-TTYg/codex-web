@@ -74,7 +74,8 @@ let installed = false;
 
 const LEFT_PANEL_SELECTOR = "aside.app-shell-left-panel";
 const RIGHT_PANEL_SELECTOR = 'aside[data-app-shell-focus-area="right-panel"]';
-const RETAIN_ON_KEYBOARD_DISMISS_SELECTOR = "[data-file-tree-search-input]";
+const PERSISTENT_MOBILE_SEARCH_SELECTOR =
+  '[data-file-tree-search-input], [cmdk-input], input[type="search"]';
 
 function installMobileLayoutStyles(): void {
   if (document.querySelector("style[data-codex-mobile-layout]")) {
@@ -99,22 +100,22 @@ export function installMobileLayout(closeSidebar: () => void): void {
   document.addEventListener(
     "focusout",
     (event) => {
-      if (!mobileMediaQuery.matches || event.relatedTarget !== null) {
+      if (!mobileMediaQuery.matches) {
         return;
       }
 
       const target = event.target;
       if (
         !(target instanceof Element) ||
-        !target.matches(RETAIN_ON_KEYBOARD_DISMISS_SELECTOR)
+        !target.matches(PERSISTENT_MOBILE_SEARCH_SELECTOR)
       ) {
         return;
       }
 
-      // The upstream file-tree search closes itself on blur. Mobile browsers
-      // emit a targetless focusout when the software keyboard is dismissed;
-      // keep that event from reaching React while preserving real focus moves.
-      event.stopPropagation();
+      // Upstream search surfaces close on blur, while mobile browsers blur
+      // their input whenever the software keyboard is dismissed. Keep search
+      // mounted across focus loss; explicit close and outside taps still work.
+      event.stopImmediatePropagation();
     },
     true,
   );
