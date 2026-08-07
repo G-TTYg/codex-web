@@ -206,8 +206,9 @@ someone with access to the web UI may be able to:
   - inline images
   - editor sidepanel
   - transcription
-  - mobile overlay drawers plus touch affordances for hover-only actions,
-    stationary-hold native drag sources, and keyboard-dismiss-safe search
+  - mobile and portrait-tablet overlay drawers plus touch affordances for
+    hover-only actions, stationary-hold native drag sources, and
+    keyboard-dismiss-safe search
 
 ## development and upgrades
 

@@ -102,10 +102,10 @@ Then verify:
 - the server starts and `/` plus the WebSocket endpoint are reachable;
 - existing and new tasks render;
 - prompt prefill and browser navigation work;
-- the narrow-viewport left and right overlay drawers, outside-tap dismissal,
-  unchanged application-menu/header controls, opaque panel surfaces, touch
-  composer, keyboard-dismiss-safe search, hover-only actions, native scrolling,
-  and stationary-hold touch dragging
+- the narrow-viewport and portrait touch-tablet left and right overlay drawers,
+  outside-tap dismissal, unchanged application-menu/header controls, opaque
+  panel surfaces, touch composer, keyboard-dismiss-safe search, hover-only
+  actions, native scrolling, and stationary-hold touch dragging
   work;
 - file/workspace pickers and inline images work; and
 - subagent/app-host MessagePort traffic still works.

@@ -50,9 +50,12 @@ subagents and newer Desktop protocol paths continue to work.
 
 The browser shim handles local browser concerns such as history mapping, mobile
 sidebar state, touch interaction fallbacks, file/workspace selection, and local
-file URLs. On narrow viewports, `src/browser/mobile-layout.ts` turns the Desktop
-left and right sidebars into opaque overlay drawers, preserves the renderer's
-application-menu/header layout, and owns outside-tap dismissal.
+file URLs. On narrow viewports and portrait touch tablets up to 1024 CSS pixels,
+`src/browser/mobile-layout.ts` turns the Desktop left and right sidebars into
+opaque overlay drawers, preserves the renderer's application-menu/header
+layout, and owns outside-tap dismissal. Capability-based media queries keep
+desktop Edge device emulation and iPad browsers on the same layout path without
+changing ordinary mouse-driven tablet-width windows.
 `src/browser/touch-interactions.ts`
 preserves the renderer's Pointer Events and dedicated file-tree gestures while
 exposing hover-only actions on coarse pointers and bridging native HTML drag

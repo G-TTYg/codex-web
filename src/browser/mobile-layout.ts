@@ -4,7 +4,11 @@
  * change between Desktop releases, while app-shell data attributes do not.
  */
 
-export const MOBILE_VIEWPORT_QUERY = "(max-width: 768px)";
+// Desktop device emulation and iPad browsers must select the same layout from
+// capabilities, not user-agent strings. Modern portrait iPads exceed 768 CSS
+// pixels but still have a coarse primary pointer and no hover input.
+export const MOBILE_VIEWPORT_QUERY =
+  "(max-width: 768px), (hover: none) and (pointer: coarse) and (max-width: 1024px) and (orientation: portrait)";
 
 const MOBILE_LAYOUT_STYLES = `
 @media ${MOBILE_VIEWPORT_QUERY} {
