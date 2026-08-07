@@ -4,6 +4,7 @@
   ...
 }:
 let
+  runtimeVersions = builtins.fromJSON (builtins.readFile ../../scripts/runtime-versions.json);
   systems = [
     "aarch64-darwin"
     "x86_64-darwin"
@@ -15,30 +16,31 @@ flake-utils.lib.eachSystem systems (
   system:
   let
     pkgs = import nixpkgs { inherit system; };
-    version = "0.144.0-alpha.4";
+    version = runtimeVersions.codexCli.version;
     platform =
       {
         aarch64-darwin = {
-          npm = "darwin-arm64";
-          hash = "sha256-y77uJWKhP/6hgziwjBiQXRpWuB8hfpi6rhcH6O6+/bs=";
+          os = "darwin";
+          arch = "arm64";
         };
         x86_64-darwin = {
-          npm = "darwin-x64";
-          hash = "sha256-nz/B9Gqnc/bWY+7NO4jHU/SGIIJtlFgwwaaofbyctcs=";
+          os = "darwin";
+          arch = "x64";
         };
         aarch64-linux = {
-          npm = "linux-arm64";
-          hash = "sha256-nxFVEkzHTgUiON6N9jYa2FBfVcL76xjS6XZU+90wt60=";
+          os = "linux";
+          arch = "arm64";
         };
         x86_64-linux = {
-          npm = "linux-x64";
-          hash = "sha256-Tas4KCEn+Qcc8TCVYV1Gjwob/02Ho9px0ezbWWMj7d8=";
+          os = "linux";
+          arch = "x64";
         };
       }
       .${system};
+    artifact = runtimeVersions.codexCli.artifacts.${platform.os}.${platform.arch};
     src = pkgs.fetchurl {
-      url = "https://registry.npmjs.org/@openai/codex/-/codex-${version}-${platform.npm}.tgz";
-      hash = platform.hash;
+      url = artifact.url;
+      hash = artifact.integrity;
     };
   in
   {

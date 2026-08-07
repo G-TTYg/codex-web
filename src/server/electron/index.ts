@@ -440,8 +440,8 @@ class BrowserWindow {
         getURL: (): string => {
           log(`BrowserWindow#${this.id}.webContents.getURL`, []);
           return String(
-            (this.webContents.mainFrame as { url?: string } | undefined)
-              ?.url ?? "",
+            (this.webContents.mainFrame as { url?: string } | undefined)?.url ??
+              "",
           );
         },
         isDestroyed: (): boolean => this.destroyed,
@@ -502,10 +502,7 @@ class BrowserWindow {
 
   static getFocusedWindow(): BrowserWindow | null {
     log("BrowserWindow.getFocusedWindow", []);
-    if (
-      BrowserWindow.focusedWindow &&
-      !BrowserWindow.focusedWindow.destroyed
-    ) {
+    if (BrowserWindow.focusedWindow && !BrowserWindow.focusedWindow.destroyed) {
       return BrowserWindow.focusedWindow;
     }
     return BrowserWindow.getAllWindows()[0] ?? null;
@@ -817,7 +814,22 @@ const nativeImage = {
     };
   },
 };
-const powerMonitor = createEmitterStub("powerMonitor");
+const powerMonitor = {
+  ...createEmitterStub("powerMonitor"),
+  getSystemIdleState(
+    _idleThresholdSeconds: number,
+  ): "active" | "idle" | "locked" | "unknown" {
+    // A headless browser bridge has no Electron session-lock signal. Treat the
+    // host as active so Desktop services do not crash or suspend themselves.
+    return "active";
+  },
+  getSystemIdleTime(): number {
+    return 0;
+  },
+  isOnBatteryPower(): boolean {
+    return false;
+  },
+};
 const screen = {
   ...createEmitterStub("screen"),
   getAllDisplays(): Array<{
@@ -873,6 +885,12 @@ const protocol = {
   },
 };
 function createSessionStub(label: string): {
+  cookies: {
+    get: (filter: Record<string, unknown>) => Promise<unknown[]>;
+    on: (event: string, listener: StubListener) => unknown;
+    remove: (url: string, name: string) => Promise<void>;
+    set: (details: Record<string, unknown>) => Promise<void>;
+  };
   getUserAgent: () => string;
   loadExtension: (extensionPath: string) => Promise<{
     id: string;
@@ -893,7 +911,21 @@ function createSessionStub(label: string): {
   };
 } {
   const emitter = createEmitterStub(label);
+  const cookieEmitter = createEmitterStub(`${label}.cookies`);
   return {
+    cookies: {
+      async get(filter: Record<string, unknown>): Promise<unknown[]> {
+        log(`${label}.cookies.get`, [filter]);
+        return [];
+      },
+      on: cookieEmitter.on,
+      async remove(url: string, name: string): Promise<void> {
+        log(`${label}.cookies.remove`, [url, name]);
+      },
+      async set(details: Record<string, unknown>): Promise<void> {
+        log(`${label}.cookies.set`, [details]);
+      },
+    },
     async loadExtension(extensionPath: string): Promise<{
       id: string;
       name: string;
@@ -933,14 +965,19 @@ function createSessionStub(label: string): {
     },
   };
 }
-const partitionSessions = new Map<string, ReturnType<typeof createSessionStub>>();
+const partitionSessions = new Map<
+  string,
+  ReturnType<typeof createSessionStub>
+>();
 const session = {
   defaultSession: createSessionStub("session.defaultSession"),
   fromPartition(partition: string): ReturnType<typeof createSessionStub> {
     log("session.fromPartition", [partition]);
     let partitionSession = partitionSessions.get(partition);
     if (!partitionSession) {
-      partitionSession = createSessionStub(`session.fromPartition(${partition})`);
+      partitionSession = createSessionStub(
+        `session.fromPartition(${partition})`,
+      );
       partitionSessions.set(partition, partitionSession);
     }
     return partitionSession;

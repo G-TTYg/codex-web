@@ -349,13 +349,13 @@ async function getWorkspaceDirectoryEntries({
   };
 }
 
-function ensureElectronLikeProcessContext(): void {
+function ensureElectronLikeProcessContext(electronVersion: string): void {
   const versions = process.versions as NodeJS.ProcessVersions & {
     electron?: string;
   };
   if (!versions.electron) {
     Object.defineProperty(versions, "electron", {
-      value: "41.2.0",
+      value: electronVersion,
       configurable: true,
       enumerable: true,
       writable: false,
@@ -620,19 +620,31 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
   await app.listen({ host: options.host, port: options.port });
   console.log(`IPC bridge listening at ws://${options.host}:${options.port}`);
 
-  ensureElectronLikeProcessContext();
-  installModuleAliasHook();
-
   const packageJson = JSON.parse(
     await fs.readFile(
       path.resolve(__dirname, "../../scratch/asar/package.json"),
       "utf8",
     ),
-  );
+  ) as {
+    devDependencies?: { electron?: unknown };
+    version?: unknown;
+  };
+  if (typeof packageJson.version !== "string" || !packageJson.version) {
+    throw new Error("Desktop package.json does not contain a version string");
+  }
+  const electronVersion = packageJson.devDependencies?.electron;
+  if (typeof electronVersion !== "string" || !electronVersion) {
+    throw new Error(
+      "Desktop package.json does not contain an Electron version",
+    );
+  }
 
   globalThis.__CODEX_SHIM_VALUES__ = {
     version: packageJson.version,
   };
+
+  ensureElectronLikeProcessContext(electronVersion);
+  installModuleAliasHook();
 
   const matches = await glob("../../scratch/asar/.vite/build/main-*.js", {
     nodir: true,
