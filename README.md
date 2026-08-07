@@ -18,15 +18,34 @@ device with a browser.
 this project aims to be as thin a wrapper as possible to ensure upstream changes
 to the codex desktop app can be integrated quickly.
 
+## compatibility
+
+codex-web currently supports macOS, Linux, and Windows hosts with these pinned
+defaults:
+
+| component               | version                      |
+| ----------------------- | ---------------------------- |
+| desktop renderer / ASAR | `26.730.61639`               |
+| electron contract       | `42.3.0`                     |
+| Windows Store package   | `OpenAI.Codex 26.730.8199.0` |
+| Codex CLI               | `0.147.0-alpha.1.2`          |
+
+the Windows package version, ASAR version, Electron version, and CLI version are
+separate compatibility layers. Windows and macOS can also contain different
+minified builds with the same ASAR version. the shared semantic patcher verifies
+both supported source forms and stops if no known form matches.
+
+defaults and download integrity values live in
+[`scripts/runtime-versions.json`](./scripts/runtime-versions.json). the managed
+CLI is independent of a separately installed `codex` binary, but still uses the
+host's normal account, configuration, and data directories.
+
 ## usage
 
 `codex-web` serves the browser client and hosts the desktop-side bridge. by
 default, it listens on `127.0.0.1:8214`.
 
-it will use `codex` from `PATH` if available, or `CODEX_CLI_PATH` if you set
-it.
-
-run it with `npx`:
+on macOS and Linux, run it with `npx`:
 
 ```bash
 npx --yes github:0xcaff/codex-web
@@ -40,19 +59,91 @@ nix run github:0xcaff/codex-web
 
 then open <http://127.0.0.1:8214> in a browser.
 
+the npm workflow downloads the pinned official macOS desktop archive as its
+renderer source. it also downloads and verifies the pinned CLI for the current
+OS and architecture. set `HOSTED_CODEX_APP_ZIP` to an existing official archive
+or `CODEX_CLI_PATH` to an explicit CLI when an override is required.
+
+### Windows
+
+install the pinned `OpenAI.Codex` Microsoft Store package, then run:
+
+```powershell
+git clone https://github.com/0xcaff/codex-web.git
+cd codex-web
+.\setup-windows.ps1
+.\start-codex-web.ps1
+```
+
+the `.bat` launchers provide the same default setup and start flow. setup uses
+the exact Appx version recorded in the runtime manifest, extracts only the
+required files, applies the shared patches, and builds the browser and server.
+
+use explicit overrides only when testing or working with a non-default setup:
+
+```powershell
+# Build from an explicitly supplied official ASAR.
+.\setup-windows.ps1 -AppAsarPath C:\path\to\app.asar
+
+# Explicitly test the newest installed Store package instead of the pin.
+.\setup-windows.ps1 -UseNewestInstalledDesktop
+
+# Route managed downloads through a proxy.
+.\setup-windows.ps1 -DownloadProxy http://127.0.0.1:7897
+
+# Run with an explicitly supplied CLI.
+.\start-codex-web.ps1 -CodexPath C:\path\to\codex.exe
+```
+
 ### sign in
 
-ensure the codex cli on the host machine is signed in before starting the
-server.
+ensure the Codex account is signed in on the host before starting the server.
+the managed CLI shares the normal Codex home directory.
 
 ```bash
 codex login --device-auth
 ```
 
+### network exposure
+
+loopback is the safe default. the Windows launcher can bind specifically to the
+current Tailscale IPv4 address:
+
+```powershell
+.\start-codex-web.ps1 -PreferTailscale
+```
+
+non-default Tailscale installations and profiles are supported:
+
+```powershell
+.\start-codex-web.ps1 -PreferTailscale `
+  -TailscalePath C:\Tools\tailscale.exe `
+  -TailscaleSocket C:\path\to\tailscaled.sock `
+  -TailscaleIPv4 100.64.0.10 `
+  -TailscaleDNSName my-host.example.ts.net
+```
+
+`-PreferTailscale` fails closed when no usable Tailnet address is found. the
+server also supports a custom host and port. on macOS and Linux, pass the host
+address directly to the npm command:
+
+```powershell
+.\start-codex-web.ps1 -HostName 0.0.0.0 -Port 9000
+```
+
+```bash
+npm run server -- --host 0.0.0.0 --port 9000
+```
+
+binding `0.0.0.0` exposes the server on every host interface, including LAN,
+Tailscale, and potentially public interfaces. it does not provide access
+control. prefer a specific Tailnet address, or protect the server with firewall
+rules and an authenticated reverse proxy.
+
 ### proxying to app-server (advanced usage)
 
-it’s often useful to run the app server separately, so a crash or restart of
-codex-web doesn’t interrupt the codex process executing commands.
+it's often useful to run the app server separately, so a crash or restart of
+codex-web doesn't interrupt the codex process executing commands.
 
 it's possible to hook codex-web up to an already-running app server using the
 `codex_remote_proxy` script.
@@ -89,7 +180,7 @@ if you need authn or authz, implement it outside of `codex-web`: proxy it throug
 wireguard, tailscale, or an ssh tunnel and put an authentication gateway or
 reverse proxy in front.
 
-someone with access to the web ui may be able to:
+someone with access to the web UI may be able to:
 
 - run commands on the host, limited only by the permissions of the `codex-web`
   server process.
@@ -97,18 +188,33 @@ someone with access to the web ui may be able to:
   local resources that are accessible to that process.
 - use the codex / chatgpt account already signed in on the host. this may
   consume usage quota or billing credits, and may expose account metadata shown
-  by the app or cli, such as name or email address.
+  by the app or CLI, such as name or email address.
 
 ## features
 
-- hostable on macOS, Linux (and anything codex cli + node will run on)
+- hostable on macOS, Linux, and Windows
 - reachable from the browser
 - thin wrapper, so updates should land fast
 - working today:
-  - subagents
+  - subagents and app-host MessagePort forwarding
   - inline images
   - editor sidepanel
   - transcription
+
+## development and upgrades
+
+source builds use the same platform-aware preparation pipeline:
+
+```bash
+npm ci --ignore-scripts
+npm run build
+npm run server
+```
+
+generated desktop files remain under ignored `scratch/` paths and are never
+committed. see [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the extraction,
+patching, and runtime design. see [`UPGRADING.md`](./UPGRADING.md) for the
+desktop compatibility upgrade procedure.
 
 ## roadmap
 
@@ -133,14 +239,14 @@ talk.
 
 ## alternatives
 
-* [davej/pocodex](https://github.com/davej/pocodex) i used this until the wheels fell off. i needed subagents
-  and an inline image viewer. this didn't have them and was having a hard time
-  keeping up with upstream codex updates.
-* the native codex remote feature (behind a feature flag) is great for
+- [davej/pocodex](https://github.com/davej/pocodex) i used this until the wheels
+  fell off. i needed subagents and an inline image viewer. this didn't have them
+  and was having a hard time keeping up with upstream codex updates.
+- the native codex remote feature (behind a feature flag) is great for
   connecting to remote codex hosts over ssh to manage long running tasks but
   this only works if you have codex desktop on your client device. this means it
   doesn't work on mobile.
-* upcoming first party mobile app from openai. `codex-web` exists and works
+- upcoming first party mobile app from openai. `codex-web` exists and works
   today. i can't wait for the mobile app but judging by the other openai mobile
   apps, i'm a little bit skeptical about the quality of the mobile experience.
   time will tell.
