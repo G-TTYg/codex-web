@@ -51,18 +51,19 @@ html[${TOUCH_INPUT_ATTRIBUTE}="true"] [draggable="true"] {
 html[${TOUCH_INPUT_ATTRIBUTE}="true"]
   [data-app-action-sidebar-scroll] {
   -webkit-overflow-scrolling: touch;
-  overflow-y: auto;
+  min-height: 0;
+  overflow-y: auto !important;
   overscroll-behavior-y: contain;
-  touch-action: pan-y pinch-zoom;
+  touch-action: pan-y pinch-zoom !important;
 }
 
+/* The initial touch-action is resolved from the hit element through its
+ * scroll ancestor. A nested drag handle can otherwise veto the row's pan-y. */
 html[${TOUCH_INPUT_ATTRIBUTE}="true"]
-  :is(
-    [data-app-action-sidebar-project-row],
-    [data-app-action-sidebar-thread-row]
-  ) {
+  [data-app-action-sidebar-scroll]
+  * {
   -webkit-user-drag: none !important;
-  touch-action: pan-y pinch-zoom;
+  touch-action: pan-y pinch-zoom !important;
 }
 `;
 

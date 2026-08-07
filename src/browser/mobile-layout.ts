@@ -105,7 +105,7 @@ export function installMobileLayout(closeSidebar: () => void): void {
   window.addEventListener("focusout", retainMobileSearch, true);
 
   document.addEventListener(
-    "pointerdown",
+    "click",
     (event) => {
       if (!mobileMediaQuery.matches) {
         return;
@@ -165,9 +165,9 @@ export function installMobileLayout(closeSidebar: () => void): void {
         return;
       }
 
-      // The document listener can dismiss an overlay without a full-screen
-      // pseudo-element scrim. Keep the original pointer sequence alive so a
-      // first touch on an underlying link or button still activates it.
+      // Dismiss only after WebKit has produced a complete click. Closing the
+      // drawer on pointerdown changes the hit-tested layout before pointerup,
+      // which can suppress the first link or button activation on touch.
       if (panel.matches(RIGHT_PANEL_SELECTOR)) {
         document
           .querySelector<HTMLButtonElement>(

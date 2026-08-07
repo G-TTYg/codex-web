@@ -67,10 +67,12 @@ function replaceOnce(filePath, before, after, label) {
 
 function replaceOneOfOnce(filePath, candidates, label) {
   const text = readText(filePath);
-  const patchedCount = candidates.reduce(
-    (count, { after }) => count + countOccurrences(text, after),
-    0,
-  );
+  // Several supported source variants may intentionally converge on the same
+  // patched contract. Count each distinct output once so a second patch pass
+  // remains idempotent without weakening the exactly-one-output assertion.
+  const patchedCount = [
+    ...new Set(candidates.map(({ after }) => after)),
+  ].reduce((count, after) => count + countOccurrences(text, after), 0);
   if (patchedCount === 1) {
     console.log(`Already patched ${label}`);
     return;
@@ -255,16 +257,27 @@ const appInitialPath = findAssetFile(
     text.includes("networkOverrideFunc:"),
   /^app-initial-.*\.js$/,
 );
-// dnd-kit activates its PointerSensor on touch pointerdown and then installs a
-// non-passive move listener that prevents native scrolling. Touch dragging is
-// intentionally unsupported in the browser surface: reject touch at the
-// sensor activator while preserving the original pointer event for row clicks
-// and WebKit scrolling. Mouse dragging remains unchanged.
-replaceOnce(
+// dnd-kit activates its PointerSensor on pointerdown and then installs a
+// non-passive move listener that prevents native scrolling. Dragging is
+// intentionally mouse-only in the browser surface: reject touch, pen, and
+// unidentified pointer types while preserving their original events for row
+// clicks and WebKit scrolling.
+replaceOneOfOnce(
   appInitialPath,
-  "return!n.isPrimary||n.button!==0?!1:(r?.({event:n}),!0)",
-  "return n.pointerType===`touch`||!n.isPrimary||n.button!==0?!1:(r?.({event:n}),!0)",
-  "dnd-kit touch dragging disabled",
+  [
+    {
+      before: "return!n.isPrimary||n.button!==0?!1:(r?.({event:n}),!0)",
+      after:
+        "return n.pointerType!==`mouse`||!n.isPrimary||n.button!==0?!1:(r?.({event:n}),!0)",
+    },
+    {
+      before:
+        "return n.pointerType===`touch`||!n.isPrimary||n.button!==0?!1:(r?.({event:n}),!0)",
+      after:
+        "return n.pointerType!==`mouse`||!n.isPrimary||n.button!==0?!1:(r?.({event:n}),!0)",
+    },
+  ],
+  "dnd-kit non-mouse dragging disabled",
 );
 // The bundled Shiki JavaScript regex engine assumes ES2025 inline modifier
 // groups are available, but current Safari/WebKit releases can reject the
