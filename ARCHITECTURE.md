@@ -57,11 +57,11 @@ layout, and owns outside-tap dismissal. Capability-based media queries keep
 desktop Edge device emulation and iPad browsers on the same layout path without
 changing ordinary mouse-driven tablet-width windows.
 `src/browser/touch-interactions.ts`
-preserves the renderer's Pointer Events and dedicated file-tree gestures while
-exposing hover-only actions on coarse pointers and bridging native HTML drag
-sources that lack a touch path. The bridge gives native scrolling priority and
-only begins dragging after a stationary hold. Mobile search surfaces remain
-mounted when software-keyboard dismissal blurs their input. The server shim
+preserves the renderer's Pointer Events while exposing hover-only actions on
+coarse pointers. On touch input, draggable rows are vertical scroll surfaces
+and HTML drag starts are cancelled; mouse input retains the renderer's ordinary
+desktop dragging. Mobile search surfaces remain mounted when software-keyboard
+dismissal blurs their input. The server shim
 owns privileged host behavior such as filesystem access and launching the
 Codex app-server. Platform-specific Appx/zip discovery never enters this
 runtime IPC layer.

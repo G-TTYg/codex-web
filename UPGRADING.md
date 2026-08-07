@@ -105,8 +105,7 @@ Then verify:
 - the narrow-viewport and portrait touch-tablet left and right overlay drawers,
   outside-tap dismissal, unchanged application-menu/header controls, opaque
   panel surfaces, touch composer, keyboard-dismiss-safe search, hover-only
-  actions, native scrolling, and stationary-hold touch dragging
-  work;
+  actions, scroll-only draggable rows on touch input, and mouse dragging work;
 - file/workspace pickers and inline images work; and
 - subagent/app-host MessagePort traffic still works.
 
