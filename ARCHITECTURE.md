@@ -49,10 +49,16 @@ loads the official Desktop main bundle after installing the module alias in
 subagents and newer Desktop protocol paths continue to work.
 
 The browser shim handles local browser concerns such as history mapping, mobile
-sidebar state, file/workspace selection, and local file URLs. The server shim
-owns privileged host behavior such as filesystem access and launching the Codex
-app-server. Platform-specific Appx/zip discovery never enters this runtime IPC
-layer.
+sidebar state, touch interaction fallbacks, file/workspace selection, and local
+file URLs. On narrow viewports, `src/browser/mobile-layout.ts` turns the Desktop
+left and right sidebars into overlay drawers, removes the desktop application
+menu, and owns outside-tap dismissal. `src/browser/touch-interactions.ts`
+preserves the renderer's Pointer Events and dedicated file-tree gestures while
+exposing hover-only actions on coarse pointers, mapping handled long presses to
+context-menu events, and bridging native HTML drag sources that lack a touch
+path. The server shim owns privileged host behavior such as filesystem access
+and launching the Codex app-server. Platform-specific Appx/zip discovery never
+enters this runtime IPC layer.
 
 On every ordinary host, `scripts/managed-runtime.mjs` chooses the pinned Codex
 CLI artifact by OS and architecture, validates its npm SRI SHA-512 value, and

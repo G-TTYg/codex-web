@@ -10,6 +10,8 @@ import {
   openSelectWorkspaceRootDialog,
   type WorkspaceDirectoryEntries,
 } from "./workspace-root-dialog";
+import { installMobileLayout, MOBILE_VIEWPORT_QUERY } from "./mobile-layout";
+import { installTouchInteractions } from "./touch-interactions";
 
 type IpcListener = (event: unknown, ...args: unknown[]) => void;
 
@@ -350,10 +352,13 @@ function requestWorkspaceDirectoryEntries(
 }
 
 const themeMediaQuery = matchMedia("(prefers-color-scheme: dark)");
-const mobileMediaQuery = matchMedia("(max-width: 768px)");
+const mobileMediaQuery = matchMedia(MOBILE_VIEWPORT_QUERY);
 const initialSidebarState = !mobileMediaQuery.matches;
 const electronShim = (window.__ELECTRON_SHIM__ ??= {});
 const buildFlavor: "prod" | "dev" | "agent" | string = "prod";
+
+installMobileLayout(() => electronShim.closeSidebar?.());
+installTouchInteractions();
 
 if (typeof globalThis.crypto.randomUUID !== "function") {
   // randomUUID is secure-context-only, but direct HTTP Tailnet addresses are

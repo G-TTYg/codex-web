@@ -206,6 +206,8 @@ someone with access to the web UI may be able to:
   - inline images
   - editor sidepanel
   - transcription
+  - mobile overlay drawers plus touch affordances for hover-only actions,
+    long-press context menus, and native drag sources
 
 ## development and upgrades
 
