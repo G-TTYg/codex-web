@@ -255,6 +255,17 @@ const appInitialPath = findAssetFile(
     text.includes("networkOverrideFunc:"),
   /^app-initial-.*\.js$/,
 );
+// dnd-kit activates its PointerSensor on touch pointerdown and then installs a
+// non-passive move listener that prevents native scrolling. Touch dragging is
+// intentionally unsupported in the browser surface: reject touch at the
+// sensor activator while preserving the original pointer event for row clicks
+// and WebKit scrolling. Mouse dragging remains unchanged.
+replaceOnce(
+  appInitialPath,
+  "return!n.isPrimary||n.button!==0?!1:(r?.({event:n}),!0)",
+  "return n.pointerType===`touch`||!n.isPrimary||n.button!==0?!1:(r?.({event:n}),!0)",
+  "dnd-kit touch dragging disabled",
+);
 // The bundled Shiki JavaScript regex engine assumes ES2025 inline modifier
 // groups are available, but current Safari/WebKit releases can reject the
 // generated `(?i:...)` forms. Compile TextMate grammars to the engine's ES2018

@@ -26,22 +26,8 @@ const MOBILE_LAYOUT_STYLES = `
     box-shadow: 12px 0 28px rgb(0 0 0 / 28%);
   }
 
-  /* Keep outside-tap dismissal without visually dimming the main surface. */
-  aside.app-shell-left-panel::after {
-    content: "";
-    position: absolute;
-    inset-block: 0;
-    inset-inline-start: 100%;
-    width: calc(100vw - 100%);
-    background: transparent;
-  }
-
   aside.app-shell-left-panel[style*="width: 0px"] {
     box-shadow: none;
-  }
-
-  aside.app-shell-left-panel[style*="width: 0px"]::after {
-    display: none;
   }
 
   aside[data-app-shell-focus-area="right-panel"] {
@@ -57,15 +43,6 @@ const MOBILE_LAYOUT_STYLES = `
       ),
       Canvas;
     box-shadow: -12px 0 28px rgb(0 0 0 / 28%);
-  }
-
-  aside[data-app-shell-focus-area="right-panel"]::before {
-    content: "";
-    position: absolute;
-    inset-block: 0;
-    inset-inline-end: 100%;
-    width: calc(100vw - 100%);
-    background: transparent;
   }
 
   main[data-app-shell-main-surface] {
@@ -188,10 +165,9 @@ export function installMobileLayout(closeSidebar: () => void): void {
         return;
       }
 
-      if (event.cancelable) {
-        event.preventDefault();
-      }
-      event.stopImmediatePropagation();
+      // The document listener can dismiss an overlay without a full-screen
+      // pseudo-element scrim. Keep the original pointer sequence alive so a
+      // first touch on an underlying link or button still activates it.
       if (panel.matches(RIGHT_PANEL_SELECTOR)) {
         document
           .querySelector<HTMLButtonElement>(

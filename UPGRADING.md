@@ -80,10 +80,10 @@ differ, keep the verified forms as alternatives inside the same transformation;
 do not fork the behavior or create a second platform patcher.
 
 The current transforms cover routing/history, mobile sidebar behavior,
-ProseMirror touch input, Safari-compatible syntax-highlighter regular
-expressions, local file URLs, Statsig network isolation, URL prompt prefill,
-browser titles, PWA/preload markup, and Sentry disablement in renderer, worker,
-and shell bundles.
+touch-drag rejection, ProseMirror touch input, Safari-compatible
+syntax-highlighter regular expressions, local file URLs, Statsig network
+isolation, URL prompt prefill, browser titles, PWA/preload markup, and Sentry
+disablement in renderer, worker, and shell bundles.
 
 ## 5. Verify by increasing scope
 
@@ -105,7 +105,8 @@ Then verify:
 - the narrow-viewport and portrait touch-tablet left and right overlay drawers,
   outside-tap dismissal, unchanged application-menu/header controls, opaque
   panel surfaces, touch composer, keyboard-dismiss-safe search, hover-only
-  actions, scroll-only draggable rows on touch input, and mouse dragging work;
+  actions, first-tap links beneath an open drawer, native Projects scrolling,
+  scroll-only draggable rows on touch input, and mouse dragging work;
 - file/workspace pickers and inline images work; and
 - subagent/app-host MessagePort traffic still works.
 

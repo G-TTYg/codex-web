@@ -47,6 +47,23 @@ html[${TOUCH_INPUT_ATTRIBUTE}="true"] [draggable="true"] {
   touch-action: pan-y pinch-zoom;
   user-select: none;
 }
+
+html[${TOUCH_INPUT_ATTRIBUTE}="true"]
+  [data-app-action-sidebar-scroll] {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y pinch-zoom;
+}
+
+html[${TOUCH_INPUT_ATTRIBUTE}="true"]
+  :is(
+    [data-app-action-sidebar-project-row],
+    [data-app-action-sidebar-thread-row]
+  ) {
+  -webkit-user-drag: none !important;
+  touch-action: pan-y pinch-zoom;
+}
 `;
 
 let installed = false;
@@ -106,7 +123,7 @@ export function installTouchInteractions(): void {
     }
   });
 
-  // These capture listeners only track the active input modality and cancel
+  // The capture listeners only track the active input modality and cancel HTML
   // dragstart; they never cancel pointer movement or native scrolling.
   document.addEventListener("pointerdown", onPointerDown, true);
   document.addEventListener("dragstart", onDragStart, true);

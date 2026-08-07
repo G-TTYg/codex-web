@@ -56,12 +56,17 @@ opaque overlay drawers, preserves the renderer's application-menu/header
 layout, and owns outside-tap dismissal. Capability-based media queries keep
 desktop Edge device emulation and iPad browsers on the same layout path without
 changing ordinary mouse-driven tablet-width windows.
+Outside-tap dismissal observes the real underlying target and does not consume
+its pointer sequence, so links and controls remain first-tap operable while a
+drawer is open.
 `src/browser/touch-interactions.ts`
 preserves the renderer's Pointer Events while exposing hover-only actions on
 coarse pointers. On touch input, draggable rows are vertical scroll surfaces
-and HTML drag starts are cancelled; mouse input retains the renderer's ordinary
-desktop dragging. Mobile search surfaces remain mounted when software-keyboard
-dismissal blurs their input. The server shim
+and HTML drag starts are cancelled. The shared semantic patcher makes dnd-kit's
+PointerSensor reject touch without consuming the event, so native scrolling and
+row clicks remain intact; mouse input retains ordinary desktop dragging.
+Mobile search surfaces remain mounted when software-keyboard dismissal blurs
+their input. The server shim
 owns privileged host behavior such as filesystem access and launching the
 Codex app-server. Platform-specific Appx/zip discovery never enters this
 runtime IPC layer.
