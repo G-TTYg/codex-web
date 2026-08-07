@@ -103,8 +103,9 @@ Then verify:
 - existing and new tasks render;
 - prompt prefill and browser navigation work;
 - the narrow-viewport left and right overlay drawers, outside-tap dismissal,
-  hidden desktop menu, touch composer, long-press context menus, hover-only
-  actions, and touch dragging work;
+  unchanged application-menu/header controls, opaque panel surfaces, touch
+  composer, long-press context menus, hover-only actions, and touch dragging
+  work;
 - file/workspace pickers and inline images work; and
 - subagent/app-host MessagePort traffic still works.
 

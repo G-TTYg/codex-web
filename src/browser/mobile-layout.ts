@@ -8,26 +8,28 @@ export const MOBILE_VIEWPORT_QUERY = "(max-width: 768px)";
 
 const MOBILE_LAYOUT_STYLES = `
 @media ${MOBILE_VIEWPORT_QUERY} {
-  [role="menubar"][aria-label="Application menu"] {
-    display: none !important;
-  }
-
   aside.app-shell-left-panel {
     position: absolute !important;
     inset: 0 auto 0 0;
     z-index: 40;
-    background: var(--color-background-surface-under);
+    isolation: isolate;
+    background:
+      linear-gradient(
+        var(--color-background-surface-under, Canvas),
+        var(--color-background-surface-under, Canvas)
+      ),
+      Canvas;
     box-shadow: 12px 0 28px rgb(0 0 0 / 28%);
   }
 
-  /* The pseudo-element is both a scrim and a touch target outside the drawer. */
+  /* Keep outside-tap dismissal without visually dimming the main surface. */
   aside.app-shell-left-panel::after {
     content: "";
     position: absolute;
     inset-block: 0;
     inset-inline-start: 100%;
     width: calc(100vw - 100%);
-    background: rgb(0 0 0 / 22%);
+    background: transparent;
   }
 
   aside.app-shell-left-panel[style*="width: 0px"] {
@@ -43,7 +45,13 @@ const MOBILE_LAYOUT_STYLES = `
     inset: 0 0 0 auto;
     z-index: 41;
     max-width: min(86vw, 320px);
-    background: var(--color-background-surface);
+    isolation: isolate;
+    background:
+      linear-gradient(
+        var(--color-background-surface, Canvas),
+        var(--color-background-surface, Canvas)
+      ),
+      Canvas;
     box-shadow: -12px 0 28px rgb(0 0 0 / 28%);
   }
 
@@ -53,16 +61,11 @@ const MOBILE_LAYOUT_STYLES = `
     inset-block: 0;
     inset-inline-end: 100%;
     width: calc(100vw - 100%);
-    background: rgb(0 0 0 / 22%);
+    background: transparent;
   }
 
   main[data-app-shell-main-surface] {
     width: 100% !important;
-  }
-
-  main[data-app-shell-main-surface]
-    > header[data-app-shell-application-menu-bar="true"] {
-    left: 0 !important;
   }
 }
 `;
