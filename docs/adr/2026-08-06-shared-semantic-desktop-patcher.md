@@ -18,6 +18,10 @@ All hosts use `scripts/patch-desktop-asar.mjs` after converging on the same
 selectively extracted ASAR layout. Each transformation discovers its target
 through multiple behavior anchors, requires a unique pre-patch match, recognizes
 the exact post-patch form, and fails on missing or ambiguous contracts.
+When official platform bundles share an ASAR version but differ only in
+minified identifiers, one transformation may list the independently verified
+platform forms as alternatives. Exactly one supported form must match; the
+replacement behavior remains identical on every host.
 
 Platform scripts own only official Desktop discovery and archive extraction.
 Renderer behavior is not allowed to diverge by host.
@@ -28,6 +32,9 @@ Renderer behavior is not allowed to diverge by host.
 - Fingerprinted filename churn no longer requires patch-file regeneration.
 - Minified semantic anchors still require deliberate maintenance when upstream
   implementation changes.
+- An equal ASAR version is not proof that Windows and macOS renderer bytes or
+  minified identifiers are equal; both official sources remain verification
+  inputs.
 - Formatting-only changes can still invalidate a replacement; this is an
   intentional signal to review the new bundle instead of silently continuing.
 - The legacy `patches/` unified diffs are removed so there is one authoritative

@@ -65,6 +65,35 @@ function replaceOnce(filePath, before, after, label) {
   console.log(`Patched ${label}`);
 }
 
+function replaceOneOfOnce(filePath, candidates, label) {
+  const text = readText(filePath);
+  const patchedCount = candidates.reduce(
+    (count, { after }) => count + countOccurrences(text, after),
+    0,
+  );
+  if (patchedCount === 1) {
+    console.log(`Already patched ${label}`);
+    return;
+  }
+  if (patchedCount !== 0) {
+    throw new Error(
+      `Expected at most one patched variant for ${label} in ${filePath}, found ${patchedCount}.`,
+    );
+  }
+
+  const matches = candidates.flatMap(({ before, after }) =>
+    Array(countOccurrences(text, before)).fill({ before, after }),
+  );
+  if (matches.length !== 1) {
+    throw new Error(
+      `Expected one supported variant for ${label} in ${filePath}, found ${matches.length}.`,
+    );
+  }
+
+  writeText(filePath, text.replace(matches[0].before, matches[0].after));
+  console.log(`Patched ${label}`);
+}
+
 function insertAfterOnce(filePath, anchor, insertion, marker, label) {
   const text = readText(filePath);
   if (text.includes(marker)) {
@@ -226,43 +255,110 @@ const appInitialPath = findAssetFile(
     text.includes("networkOverrideFunc:"),
   /^app-initial-.*\.js$/,
 );
-replaceOnce(
+// The Windows Appx and macOS ZIP use different minified identifiers even at
+// the same ASAR version. Keep both verified forms explicit so either known
+// build patches successfully while any third contract still fails closed.
+replaceOneOfOnce(
   appInitialPath,
-  "a.current??=Yfn({initialEntries:n,initialIndex:r,v5Compat:!0})",
-  "a.current??=Yfn({initialEntries:n??[window.__ELECTRON_SHIM__.initialRoute],initialIndex:r,v5Compat:!0})",
+  [
+    {
+      before: "a.current??=Yfn({initialEntries:n,initialIndex:r,v5Compat:!0})",
+      after:
+        "a.current??=Yfn({initialEntries:n??[window.__ELECTRON_SHIM__.initialRoute],initialIndex:r,v5Compat:!0})",
+    },
+    {
+      before: "a.current??=Zfn({initialEntries:n,initialIndex:r,v5Compat:!0})",
+      after:
+        "a.current??=Zfn({initialEntries:n??[window.__ELECTRON_SHIM__.initialRoute],initialIndex:r,v5Compat:!0})",
+    },
+  ],
   "initial memory route",
 );
-replaceOnce(
+replaceOneOfOnce(
   appInitialPath,
-  "l=iS.useCallback(e=>{i===!1?c(e):iS.startTransition(()=>c(e))},[i])",
-  "l=iS.useCallback(e=>{window.__ELECTRON_SHIM__.onMemoryNavigationChanged(e),i===!1?c(e):iS.startTransition(()=>c(e))},[i])",
+  [
+    {
+      before:
+        "l=iS.useCallback(e=>{i===!1?c(e):iS.startTransition(()=>c(e))},[i])",
+      after:
+        "l=iS.useCallback(e=>{window.__ELECTRON_SHIM__.onMemoryNavigationChanged(e),i===!1?c(e):iS.startTransition(()=>c(e))},[i])",
+    },
+    {
+      before:
+        "l=nS.useCallback(e=>{i===!1?c(e):nS.startTransition(()=>c(e))},[i])",
+      after:
+        "l=nS.useCallback(e=>{window.__ELECTRON_SHIM__.onMemoryNavigationChanged(e),i===!1?c(e):nS.startTransition(()=>c(e))},[i])",
+    },
+  ],
   "memory navigation notification",
 );
 
-replaceOnce(
+replaceOneOfOnce(
   appInitialPath,
-  "E0n=100,iT=ha(Q,!0),D0n=ha(Q,!0)",
-  "E0n=100,iT=ha(Q,window.__ELECTRON_SHIM__.initialSidebarState),D0n=ha(Q,!0)",
+  [
+    {
+      before: "E0n=100,iT=ha(Q,!0),D0n=ha(Q,!0)",
+      after:
+        "E0n=100,iT=ha(Q,window.__ELECTRON_SHIM__.initialSidebarState),D0n=ha(Q,!0)",
+    },
+    {
+      before: "O0n=100,nT=_a(Q,!0),k0n=_a(Q,!0)",
+      after:
+        "O0n=100,nT=_a(Q,window.__ELECTRON_SHIM__.initialSidebarState),k0n=_a(Q,!0)",
+    },
+  ],
   "initial sidebar open state",
 );
-replaceOnce(
+replaceOneOfOnce(
   appInitialPath,
-  "j0n=ha(Q,()=>new DBe(1))",
-  "j0n=ha(Q,()=>new DBe(window.__ELECTRON_SHIM__.initialSidebarState))",
+  [
+    {
+      before: "j0n=ha(Q,()=>new DBe(1))",
+      after:
+        "j0n=ha(Q,()=>new DBe(window.__ELECTRON_SHIM__.initialSidebarState))",
+    },
+    {
+      before: "N0n=_a(Q,()=>new TBe(1))",
+      after:
+        "N0n=_a(Q,()=>new TBe(window.__ELECTRON_SHIM__.initialSidebarState))",
+    },
+  ],
   "initial sidebar motion state",
 );
 
-replaceOnce(
+replaceOneOfOnce(
   appInitialPath,
-  "let i=r;iA(`toggleSidebar`,i);",
-  "let i=r;window.__ELECTRON_SHIM__.closeSidebar=()=>{f0n(e,!1,{animate:t})};iA(`toggleSidebar`,i);",
+  [
+    {
+      before: "let i=r;iA(`toggleSidebar`,i);",
+      after:
+        "let i=r;window.__ELECTRON_SHIM__.closeSidebar=()=>{f0n(e,!1,{animate:t})};iA(`toggleSidebar`,i);",
+    },
+    {
+      before: "let i=r;oA(`toggleSidebar`,i);",
+      after:
+        "let i=r;window.__ELECTRON_SHIM__.closeSidebar=()=>{m0n(e,!1,{animate:t})};oA(`toggleSidebar`,i);",
+    },
+  ],
   "electron shim closeSidebar",
 );
 
-replaceOnce(
+replaceOneOfOnce(
   appInitialPath,
-  'g=new g6a,_=c,v=new Ban(null,{attributes:{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`},',
-  'g=new g6a,_=c,codexWebPointerInput=!1,codexWebAttributes=()=>codexWebPointerInput?{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`}:{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`,inputmode:`none`},codexWebSetPointerInput=e=>{codexWebPointerInput!==e&&(codexWebPointerInput=e,v.isDestroyed||v.setProps({attributes:codexWebAttributes()}))},v=new Ban(null,{attributes:codexWebAttributes(),',
+  [
+    {
+      before:
+        'g=new g6a,_=c,v=new Ban(null,{attributes:{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`},',
+      after:
+        'g=new g6a,_=c,codexWebPointerInput=!1,codexWebAttributes=()=>codexWebPointerInput?{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`}:{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`,inputmode:`none`},codexWebSetPointerInput=e=>{codexWebPointerInput!==e&&(codexWebPointerInput=e,v.isDestroyed||v.setProps({attributes:codexWebAttributes()}))},v=new Ban(null,{attributes:codexWebAttributes(),',
+    },
+    {
+      before:
+        'g=new S6a,_=c,v=new Ban(null,{attributes:{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`},',
+      after:
+        'g=new S6a,_=c,codexWebPointerInput=!1,codexWebAttributes=()=>codexWebPointerInput?{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`}:{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`,inputmode:`none`},codexWebSetPointerInput=e=>{codexWebPointerInput!==e&&(codexWebPointerInput=e,v.isDestroyed||v.setProps({attributes:codexWebAttributes()}))},v=new Ban(null,{attributes:codexWebAttributes(),',
+    },
+  ],
   "prompt editor pointer input mode attributes",
 );
 replaceOnce(
@@ -272,29 +368,67 @@ replaceOnce(
   "prompt editor pointer input mode events",
 );
 
-replaceOnce(
+replaceOneOfOnce(
   appInitialPath,
-  "function gxa(e){return`${yxa}${vxa(e)}`}",
-  "function gxa(e){return vxa(e)}",
+  [
+    {
+      before: "function gxa(e){return`${yxa}${vxa(e)}`}",
+      after: "function gxa(e){return vxa(e)}",
+    },
+    {
+      before: "function yxa(e){return`${Sxa}${xxa(e)}`}",
+      after: "function yxa(e){return xxa(e)}",
+    },
+  ],
   "local file media source path",
 );
 
-replaceOnce(
+replaceOneOfOnce(
   appInitialPath,
-  "dIu={networkConfig:{api:oIu,logEventUrl:UNu,sdkExceptionUrl:sIu,networkOverrideFunc:RFu}}",
-  "dIu={overrideAdapter:window.__ELECTRON_SHIM__.overrideAdapter,networkConfig:{preventAllNetworkTraffic:!0,api:oIu,logEventUrl:UNu,sdkExceptionUrl:sIu,networkOverrideFunc:RFu}}",
+  [
+    {
+      before:
+        "dIu={networkConfig:{api:oIu,logEventUrl:UNu,sdkExceptionUrl:sIu,networkOverrideFunc:RFu}}",
+      after:
+        "dIu={overrideAdapter:window.__ELECTRON_SHIM__.overrideAdapter,networkConfig:{preventAllNetworkTraffic:!0,api:oIu,logEventUrl:UNu,sdkExceptionUrl:sIu,networkOverrideFunc:RFu}}",
+    },
+    {
+      before:
+        "kIu={networkConfig:{api:wIu,logEventUrl:oPu,sdkExceptionUrl:TIu,networkOverrideFunc:tIu}}",
+      after:
+        "kIu={overrideAdapter:window.__ELECTRON_SHIM__.overrideAdapter,networkConfig:{preventAllNetworkTraffic:!0,api:wIu,logEventUrl:oPu,sdkExceptionUrl:TIu,networkOverrideFunc:tIu}}",
+    },
+  ],
   "Statsig override adapter",
 );
-replaceOnce(
+replaceOneOfOnce(
   appInitialPath,
-  "{state:u}=Xx(),d=XS()===ZS",
-  "{state:u,search:codexWebSearch}=Xx(),d=XS()===ZS",
+  [
+    {
+      before: "{state:u}=Xx(),d=XS()===ZS",
+      after: "{state:u,search:codexWebSearch}=Xx(),d=XS()===ZS",
+    },
+    {
+      before: "{state:u}=Jx(),d=YS()===XS",
+      after: "{state:u,search:codexWebSearch}=Jx(),d=YS()===XS",
+    },
+  ],
   "home prompt query parameter",
 );
-replaceOnce(
+replaceOneOfOnce(
   appInitialPath,
-  "x=u?.prefillPrompt??r.get(ON)",
-  "x=u?.prefillPrompt??new URLSearchParams(codexWebSearch).get(`prompt`)??r.get(ON)",
+  [
+    {
+      before: "x=u?.prefillPrompt??r.get(ON)",
+      after:
+        "x=u?.prefillPrompt??new URLSearchParams(codexWebSearch).get(`prompt`)??r.get(ON)",
+    },
+    {
+      before: "x=u?.prefillPrompt??r.get(kN)",
+      after:
+        "x=u?.prefillPrompt??new URLSearchParams(codexWebSearch).get(`prompt`)??r.get(kN)",
+    },
+  ],
   "home composer prompt",
 );
 

@@ -31,7 +31,9 @@ can be used directly as SRI hashes for the platform Codex CLI tarballs. The
 shared runtime manager supports macOS, Linux, and Windows x64/arm64 descriptors
 and rejects a download whose SRI value differs from the manifest.
 
-Do not assume the Windows Appx version equals the version inside `app.asar`.
+Do not assume the Windows Appx version equals the version inside `app.asar`, or
+that Windows and macOS ASAR files with the same internal version are byte- or
+minifier-identical.
 
 ## 3. Extract an unmodified comparison tree
 
@@ -69,6 +71,11 @@ For each failed assertion:
 3. update both discovery anchors and the smallest required transformation;
 4. retain the exactly-one-match check; and
 5. document any changed behavior or tradeoff.
+
+When Windows and macOS publish different builds under the same ASAR version,
+run the patcher against both pristine sources. If only minified identifiers
+differ, keep the verified forms as alternatives inside the same transformation;
+do not fork the behavior or create a second platform patcher.
 
 The current transforms cover routing/history, mobile sidebar behavior,
 ProseMirror touch input, local file URLs, Statsig network isolation, URL prompt
