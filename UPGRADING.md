@@ -7,13 +7,13 @@ stop the build.
 ## 1. Record every version layer
 
 Check the official macOS appcast and Windows Store package independently. On
-Windows, run `setup-windows.ps1` with `-UseNewestInstalledDesktop`,
+Windows, run `scripts/windows/setup.ps1` with `-UseNewestInstalledDesktop`,
 `-SkipPinnedCli`, and `-SkipInstall` to print Appx, ASAR, brand, and Electron
 metadata. Also record the official npm metadata for each supported platform
 CLI artifact.
 
-Create a `codex/` feature branch and add the discoveries, source URLs, and test
-matrix to the dated project log before changing compatibility code.
+Create a feature branch and record the discoveries, source URLs, and intended
+test matrix in the pull request before changing compatibility code.
 
 ## 2. Update pinned sources
 
@@ -51,7 +51,9 @@ On Windows, pass an explicit source to the setup script after the patcher has
 been updated:
 
 ```powershell
-.\setup-windows.ps1 -AppAsarPath C:\path\to\app.asar -SkipInstall
+powershell -File .\scripts\windows\setup.ps1 `
+  -AppAsarPath C:\path\to\app.asar `
+  -SkipInstall
 ```
 
 Never commit the extracted trees or official archive.
@@ -91,10 +93,6 @@ npm ci --ignore-scripts
 npm run build
 ```
 
-```powershell
-.\setup-windows.ps1
-```
-
 Then verify:
 
 - metadata and brand validation succeeded;
@@ -119,7 +117,7 @@ without consulting a newer `codex` on `PATH`.
 
 ## 6. Close the upgrade
 
-Update the compatibility table in `README.md`, architecture/docs when contracts
-changed, the ADR for a new cross-cutting decision, and the dated process log.
-Review `git diff`, check for extracted proprietary files or credentials, stage
-only intentional paths, and create a local verified commit before publishing.
+Update the compatibility table in `README.md` and the architecture documentation
+when contracts change. Review `git diff`, check for extracted proprietary files
+or credentials, stage only intentional paths, and create a verified commit
+before publishing.

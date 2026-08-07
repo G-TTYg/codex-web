@@ -7,3 +7,9 @@ src/server/**/*.d.ts
 src/server/**/*.d.ts.map
 codex-web.*.log
 cloudflare-url.txt
+
+# Local maintainer and agent state must never be published.
+/AGENTS.md
+/logs/
+/docs/agent-runs/
+/docs/adr/

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ -n "${HOSTED_CODEX_APP_ZIP:-}" ]]; then
-  bash ./scripts/prepare_asar
+  bash ./scripts/unix/prepare-asar.sh
   exit 0
 fi
 
@@ -18,4 +18,4 @@ else
 fi
 curl --fail --location --output "$TEMP_DIR/file.zip" "$APP_URL"
 
-HOSTED_CODEX_APP_ZIP="$TEMP_DIR/file.zip" bash ./scripts/prepare_asar
+HOSTED_CODEX_APP_ZIP="$TEMP_DIR/file.zip" bash ./scripts/unix/prepare-asar.sh

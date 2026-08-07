@@ -1,173 +1,258 @@
 # codex-web
 
-Run the Codex Desktop workspace UI in a browser while the Codex process, files,
-credentials, and tools stay on a machine you control.
+a browser frontend for codex desktop, running on a machine you control.
 
-This fork tracks the current ChatGPT-branded Codex Desktop renderer and supports
-macOS, Linux, and Windows hosts. It builds on
-[`0xcaff/codex-web`](https://github.com/0xcaff/codex-web) and ports the useful
-Windows behavior from
-[`Yiruma96/codex-web`](https://github.com/Yiruma96/codex-web) without replacing
-newer upstream IPC and MessagePort fixes.
+https://github.com/user-attachments/assets/0a33cbd8-741c-412c-9e75-46dfe9324596
 
-## Compatibility
+## motivation
 
-The current compatibility target is:
+the agents were never meant to stay trapped in a terminal window for long.
+codex desktop brought the power of agents to your local computer, where your
+files, credentials, and tools already live.
 
-| Component                                   | Version verified on 2026-08-07 |
-| ------------------------------------------- | ------------------------------ |
-| Desktop renderer / ASAR                     | `26.730.61639`                 |
-| Electron contract                           | `42.3.0`                       |
-| Windows Store package used for verification | `OpenAI.Codex 26.730.8199.0`   |
-| Codex CLI pinned on all supported hosts     | `0.147.0-alpha.1.2`            |
+codex-web brings codex desktop to the browser while keeping the backend on a
+machine you control (a linux box in the cloud, your home lab, or a desktop / mac
+mini). agents keep running after your laptop closes. you can reconnect from any
+device with a browser.
 
-The Windows Appx version, ASAR version, Electron version, and Codex CLI version
-are separate version layers. Defaults live in `scripts/runtime-versions.json`.
-All ordinary Git/npm workflows download the pinned platform CLI into the
-ignored `scratch/runtime/` tree with SHA-512 verification. They do not silently
-select a newer local CLI from `PATH`. Windows additionally requires the pinned
-Appx version.
+this project aims to be as thin a wrapper as possible to ensure upstream changes
+to the codex desktop app can be integrated quickly.
 
-## Requirements
+## compatibility
 
-- Node.js 22.12 or newer and npm.
-- A signed-in Codex account (`codex login --device-auth`). The managed CLI uses
-  the normal host configuration/data directories unless you override them.
-- Windows: the pinned ChatGPT-branded Codex workspace Appx from Microsoft
-  Store, unless an explicit `app.asar` or Desktop override is supplied.
-- macOS/Linux source builds: Bash, `curl`, and `unzip`.
+codex-web currently supports macOS, Linux, and Windows hosts with these pinned
+defaults:
 
-## Windows quick start
+| component               | version                      |
+| ----------------------- | ---------------------------- |
+| desktop renderer / ASAR | `26.730.61639`               |
+| electron contract       | `42.3.0`                     |
+| Windows Store package   | `OpenAI.Codex 26.730.8199.0` |
+| Codex CLI               | `0.147.0-alpha.1.2`          |
 
-```powershell
-git clone https://github.com/G-TTYg/codex-web.git
-cd codex-web
-.\setup-windows.ps1
-.\start-codex-web.ps1
-```
+the Windows package version, ASAR version, Electron version, and CLI version are
+separate compatibility layers. Windows and macOS can also contain different
+minified builds with the same ASAR version. the shared semantic patcher verifies
+both supported source forms and stops if no known form matches.
 
-You can also double-click `setup-windows.bat` and then `start-codex-web.bat`.
-The setup script selects the exact `OpenAI.Codex` Store package recorded in the
-runtime manifest, downloads and verifies the fixed Windows CLI, extracts only
-the required files, applies the shared patches, and builds the browser and
-server bundles. This runtime is independent from a separately installed Codex
-CLI while sharing its default account, configuration, and data directories.
+defaults and download integrity values live in
+[`scripts/runtime-versions.json`](./scripts/runtime-versions.json). the managed
+CLI is independent of a separately installed `codex` binary, but still uses the
+host's normal account, configuration, and data directories.
 
-Useful Windows options:
+## usage
 
-```powershell
-# Build from an explicitly supplied official ASAR.
-.\setup-windows.ps1 -AppAsarPath C:\path\to\app.asar
+`codex-web` serves the browser client and hosts the desktop-side bridge. by
+default, it listens on `127.0.0.1:8214`.
 
-# Explicitly test the newest installed Store package instead of the pin.
-.\setup-windows.ps1 -UseNewestInstalledDesktop
-
-# Use an explicit CLI instead of the managed project pin.
-.\start-codex-web.ps1 -CodexPath C:\path\to\codex.exe
-
-# Route the pinned CLI download through a proxy.
-.\setup-windows.ps1 -DownloadProxy http://127.0.0.1:7897
-
-# Listen on a different local port.
-.\start-codex-web.ps1 -Port 9000
-
-# Listen on all interfaces (requires an external access-control layer).
-.\start-codex-web.ps1 -HostName 0.0.0.0
-
-# Deliberately expose only on the detected Tailscale address.
-.\start-codex-web.ps1 -PreferTailscale
-
-# Non-default Tailscale CLI/socket and an explicit Tailnet address.
-.\start-codex-web.ps1 -PreferTailscale `
-  -TailscalePath C:\Tools\tailscale.exe `
-  -TailscaleSocket C:\path\to\tailscaled.sock `
-  -TailscaleIPv4 100.64.0.10 `
-  -TailscaleDNSName my-host.example.ts.net
-```
-
-The launcher defaults to `127.0.0.1:8214`. It never kills an existing process
-that owns the requested port. `-PreferTailscale` fails closed if Tailscale is
-offline or its address cannot be determined, so it never silently falls back to
-loopback. `-TailscalePath`, `-TailscaleSocket`, `-TailscaleIPv4`, and
-`-TailscaleDNSName` support non-default installations and profiles.
-Binding `0.0.0.0` is supported, and includes loopback, LAN, Tailscale, and any
-public interface on the host. It is not an authentication mechanism; restrict
-access with a firewall, Tailnet ACL, and/or authenticated reverse proxy.
-
-## macOS and Linux quick start
+run it directly from Git on any supported host:
 
 ```bash
-git clone https://github.com/G-TTYg/codex-web.git
+npx --yes github:0xcaff/codex-web
+```
+
+or with nix:
+
+```bash
+nix run github:0xcaff/codex-web
+```
+
+then open <http://127.0.0.1:8214> in a browser.
+
+for a local checkout, every host uses the same public build and server commands:
+
+```bash
+git clone https://github.com/0xcaff/codex-web.git
 cd codex-web
+npm install
+npm run server
+```
+
+`npm install` runs the platform-aware build. macOS and Linux download the pinned
+official macOS desktop archive as the renderer source. Windows requires the
+pinned `OpenAI.Codex` Microsoft Store package and extracts its installed ASAR.
+all three hosts download and verify the pinned CLI for their OS and architecture.
+
+for development, install dependencies without the lifecycle build and invoke
+the same build entry explicitly:
+
+```bash
 npm ci --ignore-scripts
 npm run build
 npm run server
 ```
 
-Open <http://127.0.0.1:8214>. macOS and Linux use the pinned official macOS
-Desktop zip as the renderer source and download the pinned native CLI for the
-host architecture. Set `CODEX_CLI_PATH=/absolute/path/to/codex` only when an
-explicit local override is desired. `CODEX_WEB_DOWNLOAD_PROXY` configures the
-managed download proxy, and `CODEX_WEB_RUNTIME_DIR` changes its extraction
-directory.
+set `HOSTED_CODEX_APP_ZIP` to an existing official archive or `CODEX_CLI_PATH`
+to an explicit CLI when an override is required. `CODEX_WEB_DOWNLOAD_PROXY`
+routes managed CLI downloads through a proxy on every host.
 
-Nix users can run:
+### Windows Desktop source overrides
 
-```bash
-nix run github:G-TTYg/codex-web
+the ordinary Windows entry remains `npm run build`. direct invocation of its
+internal adapter is only needed to test a non-default Desktop source:
+
+```powershell
+# Build from an explicitly supplied official ASAR.
+powershell -File .\scripts\windows\setup.ps1 `
+  -AppAsarPath C:\path\to\app.asar
+
+# Explicitly test the newest installed Store package instead of the pin.
+powershell -File .\scripts\windows\setup.ps1 `
+  -UseNewestInstalledDesktop
+
+# Route managed downloads through a proxy.
+powershell -File .\scripts\windows\setup.ps1 `
+  -DownloadProxy http://127.0.0.1:7897
 ```
 
-To reuse a pre-downloaded official zip, avoid another download:
+### sign in
+
+ensure the Codex account is signed in on the host before starting the server.
+the managed CLI shares the normal Codex home directory.
 
 ```bash
-HOSTED_CODEX_APP_ZIP=/absolute/path/ChatGPT-darwin-arm64-26.730.61639.zip npm run build
+codex login --device-auth
 ```
 
-## Security
+### network exposure
 
-Treat anyone who can reach this server as someone who can operate Codex with
-the permissions and account of the host process. They may be able to run
-commands, read or modify accessible files and credentials, and consume account
-quota.
+loopback is the safe default. the shared server entry can bind specifically to
+the current Tailscale IPv4 address on macOS, Linux, or Windows:
 
-The server has no built-in authentication. Keep the default loopback binding,
-bind only to the detected Tailscale address, or put it behind a trusted SSH
-tunnel, VPN, and/or authenticated reverse proxy. Do not bind `0.0.0.0` to a
-publicly reachable interface without an external access-control layer.
+```bash
+npm run server -- --prefer-tailscale
+```
 
-## What works
+non-default Tailscale installations and profiles are supported:
 
-- Existing and new Codex tasks in a browser.
-- Subagents and MessagePort/app-host forwarding.
-- Inline images, local file and workspace selection.
-- Editor side panel, prompt prefill, browser history, and mobile sidebar fixes.
-- Transcription and remote-control feature-gate shims already supported upstream.
+```bash
+npm run server -- --prefer-tailscale \
+  --tailscale-path /path/to/tailscale \
+  --tailscale-socket /path/to/tailscaled.sock \
+  --tailscale-ipv4 100.64.0.10 \
+  --tailscale-dns-name my-host.example.ts.net
+```
 
-Native Electron-only surfaces such as embedded browser panels, terminals,
-computer use, and some OS integrations may still require browser-specific work.
+PowerShell users can place the arguments on one line or replace each `\` with a
+backtick. `--prefer-tailscale` fails closed when no usable Tailnet address is
+found. the same server command also supports a custom host and port:
 
-## Development
+```bash
+npm run server -- --host 0.0.0.0 --port 9000
+```
+
+binding `0.0.0.0` exposes the server on every host interface, including LAN,
+Tailscale, and potentially public interfaces. it does not provide access
+control. prefer a specific Tailnet address, or protect the server with firewall
+rules and an authenticated reverse proxy.
+
+### proxying to app-server (advanced usage)
+
+it's often useful to run the app server separately, so a crash or restart of
+codex-web doesn't interrupt the codex process executing commands.
+
+it's possible to hook codex-web up to an already-running app server using the
+`codex_remote_proxy` script.
+
+start a long-lived app server somewhere:
+
+```bash
+mkdir -p /tmp/codex-app-server
+cd /tmp/codex-app-server
+codex app-server --listen unix://codex-app-server.sock
+```
+
+then run `codex-web` with the proxy helper:
+
+```bash
+nix shell github:0xcaff/codex-web github:0xcaff/codex-web#codex_remote_proxy -c bash -lc '
+  export CODEX_UNIX_SOCKET=/tmp/codex-app-server/codex-app-server.sock
+  export CODEX_CLI_PATH="$(command -v codex_remote_proxy)"
+  codex-web
+'
+```
+
+`codex app-server proxy --sock ...` is a raw stdio protocol bridge for another
+program to use; when run directly in a terminal it will wait for protocol input
+rather than opening an interactive prompt.
+
+## security
+
+run `codex-web` only on trusted networks. treat anyone who can reach the
+`codex-web` server as someone who can operate codex on the host machine as the
+same user running the server.
+
+if you need authn or authz, implement it outside of `codex-web`: proxy it through
+wireguard, tailscale, or an ssh tunnel and put an authentication gateway or
+reverse proxy in front.
+
+someone with access to the web UI may be able to:
+
+- run commands on the host, limited only by the permissions of the `codex-web`
+  server process.
+- read or modify files, environment variables, credentials, ssh keys, and other
+  local resources that are accessible to that process.
+- use the codex / chatgpt account already signed in on the host. this may
+  consume usage quota or billing credits, and may expose account metadata shown
+  by the app or CLI, such as name or email address.
+
+## features
+
+- hostable on macOS, Linux, and Windows
+- reachable from the browser
+- thin wrapper, so updates should land fast
+- working today:
+  - subagents and app-host MessagePort forwarding
+  - inline images
+  - editor sidepanel
+  - transcription
+
+## development and upgrades
+
+source builds use the same platform-aware preparation pipeline:
 
 ```bash
 npm ci --ignore-scripts
-npm run build:server
-npm run build:browser     # requires a prepared scratch/asar tree
-npm run build             # complete platform-aware preparation and build
+npm run build
+npm run server
 ```
 
-Generated Desktop files live under `scratch/` and are never committed. See
-[`ARCHITECTURE.md`](./ARCHITECTURE.md) for the runtime and extraction design and
-[`UPGRADING.md`](./UPGRADING.md) for the Desktop upgrade procedure.
+generated desktop files remain under ignored `scratch/` paths and are never
+committed. see [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the extraction,
+patching, and runtime design. see [`UPGRADING.md`](./UPGRADING.md) for the
+desktop compatibility upgrade procedure.
 
-## 中文说明
+## roadmap
 
-三平台默认使用 `scripts/runtime-versions.json` 中固定的 Codex CLI，并按系统与架构
-下载到项目的 `scratch/runtime/`；不会自动使用本机 PATH 中的新版，但仍共用默认
-账号、配置和数据目录。Windows 还固定 Desktop Appx 版本。安装清单指定的
-Microsoft Store 版本后，依次
-运行 `setup-windows.bat` 和 `start-codex-web.bat` 即可。默认只监听本机
-`127.0.0.1:8214`；需要在 Tailnet 内访问时，请显式使用
-`start-codex-web.ps1 -PreferTailscale`。非默认安装可追加 `-TailscalePath`、
-`-TailscaleSocket`、`-TailscaleIPv4` 和 `-TailscaleDNSName`。macOS/Linux 用户
-按上面的 npm 或 Nix 命令构建。任何补丁锚点不匹配都表示上游 Desktop 已变化，
-此时应按升级文档适配，不能跳过失败继续运行。
+some parts of the desktop experience are not wired up yet:
+
+- browser panel support, likely rebuilt around iframes
+- computer use on linux, which could become a very powerful feature
+- terminal support
+- git worker integration
+- whatever else people find and file issues for
+
+## issues welcome
+
+if something is broken, missing, or rough around the edges, please file an
+issue.
+
+using `codex-web` in an interesting way? post about it on x and tag me
+[@0xcaff](https://x.com/0xcaff).
+
+using this at a company and need something more tailored? email me and we can
+talk.
+
+## alternatives
+
+- [davej/pocodex](https://github.com/davej/pocodex) i used this until the wheels
+  fell off. i needed subagents and an inline image viewer. this didn't have them
+  and was having a hard time keeping up with upstream codex updates.
+- the native codex remote feature (behind a feature flag) is great for
+  connecting to remote codex hosts over ssh to manage long running tasks but
+  this only works if you have codex desktop on your client device. this means it
+  doesn't work on mobile.
+- upcoming first party mobile app from openai. `codex-web` exists and works
+  today. i can't wait for the mobile app but judging by the other openai mobile
+  apps, i'm a little bit skeptical about the quality of the mobile experience.
+  time will tell.
