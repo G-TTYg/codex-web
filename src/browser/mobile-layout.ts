@@ -75,7 +75,8 @@ let installed = false;
 const LEFT_PANEL_SELECTOR = "aside.app-shell-left-panel";
 const RIGHT_PANEL_SELECTOR = 'aside[data-app-shell-focus-area="right-panel"]';
 const PERSISTENT_MOBILE_SEARCH_SELECTOR =
-  '[data-file-tree-search-input], [cmdk-input], input[type="search"]';
+  '[data-file-tree-search-input], [cmdk-input], [role="searchbox"], input[type="search"]';
+const TOUCH_INPUT_SELECTOR = 'html[data-codex-touch-input="true"]';
 
 function installMobileLayoutStyles(): void {
   if (document.querySelector("style[data-codex-mobile-layout]")) {
@@ -97,28 +98,30 @@ export function installMobileLayout(closeSidebar: () => void): void {
   installMobileLayoutStyles();
   const mobileMediaQuery = matchMedia(MOBILE_VIEWPORT_QUERY);
 
-  document.addEventListener(
-    "focusout",
-    (event) => {
-      if (!mobileMediaQuery.matches) {
-        return;
-      }
+  const retainMobileSearch = (event: FocusEvent): void => {
+    if (
+      !mobileMediaQuery.matches &&
+      !document.documentElement.matches(TOUCH_INPUT_SELECTOR)
+    ) {
+      return;
+    }
 
-      const target = event.target;
-      if (
-        !(target instanceof Element) ||
-        !target.matches(PERSISTENT_MOBILE_SEARCH_SELECTOR)
-      ) {
-        return;
-      }
+    const target = event.target;
+    if (
+      !(target instanceof Element) ||
+      !target.matches(PERSISTENT_MOBILE_SEARCH_SELECTOR)
+    ) {
+      return;
+    }
 
-      // Upstream search surfaces close on blur, while mobile browsers blur
-      // their input whenever the software keyboard is dismissed. Keep search
-      // mounted across focus loss; explicit close and outside taps still work.
-      event.stopImmediatePropagation();
-    },
-    true,
-  );
+    // Upstream search surfaces close on blur, while mobile browsers blur
+    // their input whenever the software keyboard is dismissed. Window capture
+    // must stop both native blur and React's delegated focusout before either
+    // the file-tree handler or the dialog focus-dismiss layer observes them.
+    event.stopImmediatePropagation();
+  };
+  window.addEventListener("blur", retainMobileSearch, true);
+  window.addEventListener("focusout", retainMobileSearch, true);
 
   document.addEventListener(
     "pointerdown",

@@ -1,7 +1,7 @@
 const TOUCH_INPUT_ATTRIBUTE = "data-codex-touch-input";
 const TOUCH_DRAGGING_ATTRIBUTE = "data-codex-touch-dragging";
 
-const DRAG_ACTIVATION_DELAY_MS = 500;
+const DRAG_ACTIVATION_DELAY_MS = 1_000;
 const PRE_HOLD_MOVE_TOLERANCE_PX = 6;
 const DRAG_START_DISTANCE_PX = 12;
 const CLICK_SUPPRESSION_MS = 800;
