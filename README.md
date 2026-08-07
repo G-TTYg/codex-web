@@ -94,7 +94,9 @@ internal adapter is only needed to test a non-default Desktop source:
 ```powershell
 # Build from an explicitly supplied official ASAR.
 powershell -File .\scripts\windows\setup.ps1 `
-  -AppAsarPath C:\path\to\app.asar
+  -AppAsarPath C:\path\to\app.asar `
+  -AppAsarUnpackedPath C:\path\to\app.asar.unpacked `
+  -AppResourcesPath C:\path\to\Resources
 
 # Explicitly test the newest installed Store package instead of the pin.
 powershell -File .\scripts\windows\setup.ps1 `
@@ -204,12 +206,23 @@ someone with access to the web UI may be able to:
 - working today:
   - subagents and app-host MessagePort forwarding
   - host-native terminal sessions
+  - Codex Micro discovery and control through host-native `node-hid` and
+    `serialport`
+  - the official standalone Computer Use Node runtime on Windows and macOS
   - inline images
   - editor sidepanel
   - transcription
   - mobile and portrait-tablet overlay drawers plus touch affordances for
     hover-only actions, scroll-only draggable rows, and keyboard-dismiss-safe
     search
+
+The platform build copies Computer Use and native-resource assets only from the
+same official Desktop Resources directory used for extraction. Electron-native
+addons are retained for compatibility auditing, but the plain-Node server uses
+host-native packages or upstream fallbacks where an addon is linked directly to
+Electron. Windows device attestation already uses the upstream non-addon signal
+path; macOS-only hardware attestation remains limited by that Electron runtime
+boundary.
 
 ## development and upgrades
 

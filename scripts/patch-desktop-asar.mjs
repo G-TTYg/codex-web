@@ -211,6 +211,24 @@ console.log(
   `Patching ChatGPT Desktop ASAR ${desktopAppVersion} (Electron ${desktopPackage.devDependencies?.electron ?? "unknown"}).`,
 );
 
+const codexMicroServicePath = findFile(
+  "Codex Micro service",
+  buildRoot,
+  (text) =>
+    text.includes("HID topology watcher addon not found") &&
+    text.includes("@worklouder/device-kit-oai") &&
+    text.includes("CodexMicroService"),
+);
+// Official Desktop can load its Electron-specific HID watcher. The browser
+// bridge hosts this service in plain Node, so use the project-owned node-hid
+// build and the service's existing polling fallback on every host Node runtime.
+replaceOnce(
+  codexMicroServicePath,
+  "process.platform===`linux`?",
+  "(process.release.name===`node`||process.platform===`linux`)?",
+  "Codex Micro host Node HID discovery",
+);
+
 const indexHtmlPath = path.join(webviewRoot, "index.html");
 const indexHtml = readText(indexHtmlPath);
 const htmlEol = indexHtml.includes("\r\n") ? "\r\n" : "\n";

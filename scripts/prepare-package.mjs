@@ -33,7 +33,7 @@ if (process.platform === "win32") {
     "./scripts/windows/setup.ps1",
   ];
   // npm has already installed dependency lifecycle scripts before `prepare`.
-  // An explicit `npm run build` must also rebuild the host-native sqlite addon
+  // An explicit `npm run build` must also rebuild the host-native addons
   // after the documented `npm ci --ignore-scripts` development install.
   if (process.env.npm_lifecycle_event === "prepare") {
     setupArguments.push("-SkipInstall");
@@ -41,7 +41,7 @@ if (process.platform === "win32") {
   if (process.env.CODEX_CLI_PATH) setupArguments.push("-SkipPinnedCli");
   run("powershell.exe", setupArguments);
 } else {
-  // `npm ci --ignore-scripts` intentionally skips both native addons. A
+  // `npm ci --ignore-scripts` intentionally skips native addons. A
   // direct build must restore them for the host Node runtime; during npm's
   // prepare lifecycle their dependency install scripts have already run.
   if (process.env.npm_lifecycle_event !== "prepare") {

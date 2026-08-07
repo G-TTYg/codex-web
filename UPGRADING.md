@@ -43,6 +43,8 @@ new source without patching it. The shared extractor is platform-neutral:
 ```bash
 node scripts/extract-needed-asar.mjs \
   --asar /absolute/path/to/app.asar \
+  --unpacked-root /absolute/path/to/app.asar.unpacked \
+  --platform darwin \
   --out scratch/asar-new-unpatched \
   --force
 ```
@@ -53,6 +55,8 @@ been updated:
 ```powershell
 powershell -File .\scripts\windows\setup.ps1 `
   -AppAsarPath C:\path\to\app.asar `
+  -AppAsarUnpackedPath C:\path\to\app.asar.unpacked `
+  -AppResourcesPath C:\path\to\Resources `
   -SkipInstall
 ```
 
@@ -85,10 +89,25 @@ syntax-highlighter regular expressions, local file URLs, Statsig network
 isolation, URL prompt prefill, browser titles, PWA/preload markup, and Sentry
 disablement in renderer, worker, and shell bundles.
 
-Compare the extracted Desktop package's `better-sqlite3` and `node-pty`
-dependency ranges with `package.json` during every upgrade. These modules are
-not copied from the Desktop distribution: codex-web installs and rebuilds them
-for its host Node runtime.
+Compare the extracted Desktop package's `better-sqlite3`, `node-pty`,
+`@parcel/watcher`, Work Louder, `node-hid`, SerialPort, and `tslib` contracts
+with `package.json` and `scripts/runtime-externals.json` during every upgrade.
+Host-native modules are not copied from the Desktop distribution: codex-web
+installs and rebuilds them for its host Node runtime. Keep Work Louder private
+JavaScript sourced from the official ASAR and update its exact audited versions
+together.
+
+Run the runtime audit after extraction, resource copying, and patching:
+
+```bash
+node scripts/audit-runtime-externals.mjs \
+  --root scratch/asar-new-unpatched \
+  --platform darwin
+```
+
+Do not add a new allowlist entry until its platform guard, provider, ABI, and
+runtime path have been verified. The audit intentionally requires the detected
+dynamic-module and native-literal sets to match the manifest exactly.
 
 ## 5. Verify by increasing scope
 
@@ -102,8 +121,10 @@ npm run build
 Then verify:
 
 - metadata and brand validation succeeded;
-- `npm ls better-sqlite3 node-pty --depth=0` reports the expected host-native
-  versions;
+- `npm ls better-sqlite3 node-hid node-pty serialport tslib --depth=0` reports
+  the expected host-native versions;
+- the runtime external audit resolves every platform provider, loads Work
+  Louder with Codex Micro support, and validates native and `cua_node` assets;
 - every semantic transform reported success with no skipped assertion;
 - browser and server builds completed;
 - the server starts and `/` plus the WebSocket endpoint are reachable;
@@ -117,6 +138,9 @@ Then verify:
   draggable rows, and mouse dragging work;
 - file/workspace pickers and inline images work; and
 - a terminal can be created, resized, written to, closed, and reopened; and
+- a Codex Micro can be detected, connected, and updated after USB topology
+  changes; and
+- Computer Use can start its bundled Node REPL on Windows/macOS; and
 - subagent/app-host MessagePort traffic still works.
 
 Exercise Windows natively and at least one Unix build path before release. If a

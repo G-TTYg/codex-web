@@ -10,7 +10,9 @@ const asar = require("@electron/asar");
 function parseArgs(argv) {
   const options = {
     asarPath: null,
+    unpackedRoot: null,
     outDir: "scratch/asar",
+    platform: process.platform,
     force: false,
   };
 
@@ -18,8 +20,12 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--asar") {
       options.asarPath = argv[++i];
+    } else if (arg === "--unpacked-root") {
+      options.unpackedRoot = argv[++i];
     } else if (arg === "--out") {
       options.outDir = argv[++i];
+    } else if (arg === "--platform") {
+      options.platform = argv[++i];
     } else if (arg === "--force") {
       options.force = true;
     } else if (arg === "--help" || arg === "-h") {
@@ -33,45 +39,84 @@ function parseArgs(argv) {
   if (!options.asarPath) {
     throw new Error("Missing required --asar path.");
   }
+  if (!["darwin", "linux", "win32"].includes(options.platform)) {
+    throw new Error(`Unsupported --platform value: ${options.platform}`);
+  }
 
   return options;
 }
 
 function printHelp() {
   console.log(`Usage:
-  node scripts/extract-needed-asar.mjs --asar <app.asar> [--out scratch/asar] [--force]
+  node scripts/extract-needed-asar.mjs --asar <app.asar> \
+    [--unpacked-root <app.asar.unpacked>] [--platform <platform>] \
+    [--out scratch/asar] [--force]
 
 Extracts only the ChatGPT Desktop files codex-web needs. The same extracted
-layout is used on macOS, Linux, and Windows, and avoids failures when an archive
-references platform-specific unpacked native files.`);
+layout is used on macOS, Linux, and Windows. Selected private packages preserve
+their official ASAR layout, while host-owned native modules remain excluded.`);
 }
 
 function normalizeArchivePath(entry) {
   return entry.replace(/^[/\\]+/, "");
 }
 
-function shouldExtract(entry) {
+function shouldExtract(entry, platform) {
   const comparable = entry.replaceAll("\\", "/");
+  const workLouderRoot = "node_modules/@worklouder/device-kit-oai/";
+  const isWorkLouder = comparable.startsWith(workLouderRoot);
+  const isHostOwnedNativePackage =
+    isWorkLouder &&
+    [
+      "/node_modules/node-hid/",
+      "/node_modules/serialport/",
+      "/node_modules/@serialport/",
+    ].some((segment) => comparable.includes(segment));
+
   return (
     comparable === "package.json" ||
     comparable.startsWith(".vite/build/") ||
     comparable.startsWith("webview/") ||
     comparable.startsWith("skills/") ||
-    comparable.startsWith("native-menu-locales/")
+    comparable.startsWith("native-menu-locales/") ||
+    (isWorkLouder && !isHostOwnedNativePackage) ||
+    (platform === "darwin" && comparable.startsWith("node_modules/objc-js/"))
   );
 }
 
-async function extractFile(asarPath, outDir, archivePath) {
+async function extractFile(asarPath, unpackedRoot, outDir, archivePath, stat) {
   const parts = archivePath.split(/[\\/]+/u);
   const destination = path.join(outDir, ...parts);
   await fs.mkdir(path.dirname(destination), { recursive: true });
+
+  if (stat.unpacked) {
+    if (!unpackedRoot) {
+      throw new Error(
+        `Selected ASAR entry ${archivePath} is unpacked, but --unpacked-root was not supplied.`,
+      );
+    }
+    const source = path.join(unpackedRoot, ...parts);
+    try {
+      await fs.copyFile(source, destination);
+    } catch (error) {
+      throw new Error(
+        `Could not copy selected unpacked ASAR entry ${archivePath} from ${source}.`,
+        { cause: error },
+      );
+    }
+    return;
+  }
+
   const contents = asar.extractFile(asarPath, archivePath);
   await fs.writeFile(destination, contents);
 }
 
 async function main() {
-  const { asarPath, outDir, force } = parseArgs(process.argv.slice(2));
+  const { asarPath, unpackedRoot, outDir, platform, force } = parseArgs(
+    process.argv.slice(2),
+  );
   const resolvedAsar = path.resolve(asarPath);
+  const resolvedUnpacked = unpackedRoot ? path.resolve(unpackedRoot) : null;
   const resolvedOut = path.resolve(outDir);
 
   if (force) {
@@ -83,7 +128,7 @@ async function main() {
   const entries = asar
     .listPackage(resolvedAsar)
     .map(normalizeArchivePath)
-    .filter(shouldExtract)
+    .filter((entry) => shouldExtract(entry, platform))
     .sort();
 
   let extracted = 0;
@@ -95,7 +140,13 @@ async function main() {
       directories += 1;
       continue;
     }
-    await extractFile(resolvedAsar, resolvedOut, archivePath);
+    await extractFile(
+      resolvedAsar,
+      resolvedUnpacked,
+      resolvedOut,
+      archivePath,
+      stat,
+    );
     extracted += 1;
   }
 

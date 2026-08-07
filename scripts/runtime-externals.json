@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "dynamicModules": [
+    {
+      "name": "@parcel/watcher",
+      "platforms": ["linux"],
+      "provider": "project"
+    },
+    {
+      "name": "@worklouder/device-kit-oai",
+      "platforms": ["darwin", "linux", "win32"],
+      "provider": "extracted"
+    },
+    {
+      "name": "@worklouder/wl-device-kit",
+      "platforms": ["darwin", "linux", "win32"],
+      "provider": "nested",
+      "via": ["@worklouder/device-kit-oai"]
+    },
+    {
+      "name": "better-sqlite3",
+      "platforms": ["darwin", "linux", "win32"],
+      "provider": "project"
+    },
+    {
+      "name": "electron",
+      "platforms": ["darwin", "linux", "win32"],
+      "provider": "server-shim"
+    },
+    {
+      "name": "node-hid",
+      "platforms": ["darwin", "linux", "win32"],
+      "provider": "nested",
+      "via": ["@worklouder/device-kit-oai", "@worklouder/wl-device-kit"]
+    },
+    {
+      "name": "node-pty",
+      "platforms": ["darwin", "linux", "win32"],
+      "provider": "project"
+    },
+    {
+      "name": "objc-js",
+      "platforms": ["darwin"],
+      "provider": "extracted"
+    },
+    {
+      "name": "tslib",
+      "platforms": ["darwin", "linux", "win32"],
+      "provider": "project"
+    }
+  ],
+  "nativeResourceLiterals": [
+    "avatar-overlay.node",
+    "avatar_overlay.node",
+    "browser-use-peer-authorization.node",
+    "computer-use-app-icons.node",
+    "computer_use_app_icons.node",
+    "devicecheck.node",
+    "hid-topology-watcher.node",
+    "hid_topology_watcher.node",
+    "input-monitoring-permission.node",
+    "input_monitoring_permission.node",
+    "remote-control-device-key.node",
+    "sky.node",
+    "sparkle.node",
+    "windows-account.node",
+    "windows-updater.node"
+  ],
+  "nativeResources": {
+    "darwin": [
+      "avatar-overlay.node",
+      "browser-use-peer-authorization.node",
+      "devicecheck.node",
+      "hid-topology-watcher.node",
+      "input-monitoring-permission.node",
+      "remote-control-device-key.node",
+      "sky.node",
+      "sparkle.node"
+    ],
+    "linux": [],
+    "win32": [
+      "computer-use-app-icons.node",
+      "hid-topology-watcher.node",
+      "windows-account.node",
+      "windows-updater.node"
+    ]
+  },
+  "computerUseRuntime": {
+    "darwin": {
+      "manifestPlatform": "darwin",
+      "required": true
+    },
+    "linux": {
+      "required": false
+    },
+    "win32": {
+      "manifestPlatform": "windows",
+      "required": true
+    }
+  },
+  "workLouder": {
+    "deviceKitVersion": "0.1.11",
+    "nodeHidVersion": "3.3.0",
+    "serialportVersion": "12.0.0",
+    "wlDeviceKitVersion": "0.1.23"
+  }
+}

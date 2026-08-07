@@ -1,6 +1,8 @@
 param(
   [string]$AppVersion = "",
   [string]$AppAsarPath = "",
+  [string]$AppAsarUnpackedPath = "",
+  [string]$AppResourcesPath = "",
   [string]$DownloadProxy = "",
   [switch]$UseNewestInstalledDesktop,
   [switch]$SkipPinnedCli,
@@ -89,6 +91,8 @@ function Resolve-ChatGPTDesktopAsar {
   param(
     [string]$RequestedVersion,
     [string]$ExplicitAsarPath,
+    [string]$ExplicitUnpackedPath,
+    [string]$ExplicitResourcesPath,
     [bool]$UseNewest,
     [object]$Manifest
   )
@@ -98,10 +102,30 @@ function Resolve-ChatGPTDesktopAsar {
       throw "Could not find app.asar at $ExplicitAsarPath."
     }
 
+    $resolvedAsarPath = (Resolve-Path -LiteralPath $ExplicitAsarPath).ProviderPath
+    $resourcesPath = if ($ExplicitResourcesPath) {
+      if (-not (Test-Path -LiteralPath $ExplicitResourcesPath -PathType Container)) {
+        throw "Could not find Desktop Resources at $ExplicitResourcesPath."
+      }
+      (Resolve-Path -LiteralPath $ExplicitResourcesPath).ProviderPath
+    } else {
+      Split-Path -Parent $resolvedAsarPath
+    }
+    $unpackedPath = if ($ExplicitUnpackedPath) {
+      if (-not (Test-Path -LiteralPath $ExplicitUnpackedPath -PathType Container)) {
+        throw "Could not find app.asar.unpacked at $ExplicitUnpackedPath."
+      }
+      (Resolve-Path -LiteralPath $ExplicitUnpackedPath).ProviderPath
+    } else {
+      Join-Path $resourcesPath "app.asar.unpacked"
+    }
+
     return @{
       Identity = "n/a (explicit ASAR)"
       PackageVersion = "n/a (explicit ASAR)"
-      Path = (Resolve-Path -LiteralPath $ExplicitAsarPath).ProviderPath
+      Path = $resolvedAsarPath
+      ResourcesPath = $resourcesPath
+      UnpackedPath = $unpackedPath
       Source = "explicit"
     }
   }
@@ -131,6 +155,8 @@ function Resolve-ChatGPTDesktopAsar {
           Identity = [string]$package.Name
           PackageVersion = [string]$package.Version
           Path = $candidate
+          ResourcesPath = Split-Path -Parent $candidate
+          UnpackedPath = Join-Path (Split-Path -Parent $candidate) "app.asar.unpacked"
           Source = $package.PackageFullName
         }
       }
@@ -169,9 +195,14 @@ $runtimeManifest = Get-Content -LiteralPath "scripts\runtime-versions.json" -Raw
 if (($UseNewestInstalledDesktop -and $AppVersion) -or ($AppAsarPath -and ($UseNewestInstalledDesktop -or $AppVersion))) {
   throw "Use only one Desktop source override: -AppAsarPath, -AppVersion, or -UseNewestInstalledDesktop."
 }
+if (($AppAsarUnpackedPath -or $AppResourcesPath) -and -not $AppAsarPath) {
+  throw "-AppAsarUnpackedPath and -AppResourcesPath can only be used with -AppAsarPath."
+}
 $chatGPTDesktopAsar = Resolve-ChatGPTDesktopAsar `
   -RequestedVersion $AppVersion `
   -ExplicitAsarPath $AppAsarPath `
+  -ExplicitUnpackedPath $AppAsarUnpackedPath `
+  -ExplicitResourcesPath $AppResourcesPath `
   -UseNewest ([bool]$UseNewestInstalledDesktop) `
   -Manifest $runtimeManifest
 $asarPath = "scratch\chatgpt-desktop.asar"
@@ -180,6 +211,7 @@ $asarOut = "scratch\asar"
 Write-Host "Using Node: $node"
 Write-Host "Using npm:  $npm"
 Write-Host "Using ChatGPT Desktop app.asar: $($chatGPTDesktopAsar.Path)"
+Write-Host "Using ChatGPT Desktop Resources: $($chatGPTDesktopAsar.ResourcesPath)"
 Write-Host "Desktop package source: $($chatGPTDesktopAsar.Source)"
 
 if (-not $SkipInstall) {
@@ -190,6 +222,18 @@ if (-not $SkipInstall) {
     Assert-FileNotLocked `
       -Path "node_modules\node-pty\build\Release\conpty.node" `
       -ErrorMessage "The current codex-web server is still using a native module. Close its console window or stop that project server, then run setup again."
+    Get-ChildItem -Path "node_modules\node-hid\build\Release\HID.node","node_modules\node-hid\prebuilds\*\*.node" -File -ErrorAction SilentlyContinue |
+      ForEach-Object {
+        Assert-FileNotLocked `
+          -Path $_.FullName `
+          -ErrorMessage "The current codex-web server is still using a native module. Close its console window or stop that project server, then run setup again."
+      }
+    Get-ChildItem -Path "node_modules\@serialport\bindings-cpp\build\Release\bindings.node","node_modules\@serialport\bindings-cpp\prebuilds\*\*.node" -File -ErrorAction SilentlyContinue |
+      ForEach-Object {
+        Assert-FileNotLocked `
+          -Path $_.FullName `
+          -ErrorMessage "The current codex-web server is still using a native module. Close its console window or stop that project server, then run setup again."
+      }
     Get-ChildItem -Path "node_modules\node-pty\prebuilds\win32-*\conpty.node" -File -ErrorAction SilentlyContinue |
       ForEach-Object {
         Assert-FileNotLocked `
@@ -224,7 +268,23 @@ Invoke-Step "Copy ChatGPT Desktop app.asar" {
 }
 
 Invoke-Step "Extract required app.asar files" {
-  Invoke-NativeCommand -FilePath $node -Arguments @(".\scripts\extract-needed-asar.mjs", "--asar", $asarPath, "--out", $asarOut, "--force") -Name "extract-needed-asar"
+  Invoke-NativeCommand -FilePath $node -Arguments @(
+    ".\scripts\extract-needed-asar.mjs",
+    "--asar", $asarPath,
+    "--unpacked-root", $chatGPTDesktopAsar.UnpackedPath,
+    "--platform", "win32",
+    "--out", $asarOut,
+    "--force"
+  ) -Name "extract-needed-asar"
+}
+
+Invoke-Step "Copy Desktop native and Computer Use resources" {
+  Invoke-NativeCommand -FilePath $node -Arguments @(
+    ".\scripts\copy-desktop-resources.mjs",
+    "--resources", $chatGPTDesktopAsar.ResourcesPath,
+    "--platform", "win32",
+    "--out", $asarOut
+  ) -Name "copy-desktop-resources"
 }
 
 $desktopPackageJsonPath = Join-Path $asarOut "package.json"
@@ -277,6 +337,14 @@ Invoke-Step "Apply ChatGPT Desktop patches" {
   foreach ($nativeModule in @("better-sqlite3", "node-pty")) {
     Remove-Item -LiteralPath "scratch\asar\node_modules\$nativeModule" -Recurse -Force -ErrorAction SilentlyContinue
   }
+}
+
+Invoke-Step "Audit Desktop runtime externals" {
+  Invoke-NativeCommand -FilePath $node -Arguments @(
+    ".\scripts\audit-runtime-externals.mjs",
+    "--root", $asarOut,
+    "--platform", "win32"
+  ) -Name "audit-runtime-externals"
 }
 
 Invoke-Step "Build browser bundle" {

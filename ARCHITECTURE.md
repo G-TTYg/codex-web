@@ -10,10 +10,14 @@ code is extracted at install time and is not stored in this repository.
 flowchart LR
   W["Pinned Windows Store app.asar"] --> E["Selective ASAR extractor"]
   U["Official macOS Desktop zip"] --> E
+  W --> R["Official Resources copier"]
+  U --> R
   E --> M["Metadata validation"]
+  R --> A["Fail-closed runtime audit"]
   M --> P["Shared fail-closed semantic patcher"]
-  P --> V["Vite browser preload build"]
-  P --> S["TypeScript server build"]
+  P --> A
+  A --> V["Vite browser preload build"]
+  A --> S["TypeScript server build"]
   V --> O["Generated scratch/asar tree"]
   S --> O
 ```
@@ -25,19 +29,38 @@ consume `HOSTED_CODEX_APP_ZIP` when supplied. Both paths converge on:
 
 - `scripts/windows/setup.ps1` and `scripts/unix/*.sh`, the platform-specific
   source acquisition adapters behind the shared `npm run build` entry;
-- `scripts/extract-needed-asar.mjs`, which extracts only the Desktop package
-  metadata, compiled shell bundles, webview, skills, and native-menu locales;
+- `scripts/extract-needed-asar.mjs`, which extracts the Desktop package
+  metadata, compiled shell bundles, webview, skills, native-menu locales, the
+  private Work Louder device kit, and macOS `objc-js` support while preserving
+  selected `app.asar.unpacked` entries;
+- `scripts/copy-desktop-resources.mjs`, which copies the matching official
+  `native/` and standalone `cua_node/` runtime on Windows and macOS;
+- `scripts/audit-runtime-externals.mjs` and
+  `scripts/runtime-externals.json`, which fail the build when a dynamic module,
+  native resource literal, provider, native asset, or Computer Use runtime
+  contract is added, removed, unresolved, or targets the wrong platform;
 - `scripts/patch-desktop-asar.mjs`, which validates the ChatGPT brand and applies
   every browser compatibility change through unique semantic anchors;
 - `scripts/generate-pwa-icon.mjs`, which creates the browser install icon; and
 - the shared browser and server builds.
 
-Selective extraction intentionally omits upstream native modules. The Desktop
-shell leaves `better-sqlite3` and `node-pty` external in the supported bundle,
-and the project supplies host-native builds of both dependencies. This keeps
-the database and terminal addons compatible with the Node runtime that hosts
-the browser bridge instead of copying Electron-targeted binaries from an Appx
-or macOS bundle.
+Selective extraction intentionally replaces upstream copies of
+`better-sqlite3`, `node-pty`, `node-hid`, and SerialPort bindings with
+project-owned host builds. This keeps database, terminal, HID, and serial
+addons compatible with the Node runtime that hosts the browser bridge instead
+of loading Electron-targeted binaries from an Appx or macOS bundle. The private
+Work Louder JavaScript stays sourced from the official Desktop distribution;
+the semantic patch makes host Node use `node-hid` discovery and the existing
+polling fallback rather than the Electron-only HID topology watcher.
+
+Windows and macOS retain the official `native/` tree as an audited Desktop
+asset and copy the complete `cua_node/` standalone runtime. `cua_node` is
+validated against its manifest, host architecture, executable paths, module
+tree, and `@oai/sky` package. Native addons linked directly to Electron are not
+treated as plain-Node providers: runtime paths continue to use upstream guards
+and fallbacks. Linux has no official native Resources source, so its build
+skips both trees explicitly; Codex Micro still uses host dependencies, while
+native Computer Use remains unsupported there.
 
 ## Runtime flow
 
