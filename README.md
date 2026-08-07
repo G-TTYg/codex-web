@@ -45,7 +45,7 @@ host's normal account, configuration, and data directories.
 `codex-web` serves the browser client and hosts the desktop-side bridge. by
 default, it listens on `127.0.0.1:8214`.
 
-on macOS and Linux, run it with `npx`:
+run it directly from Git on any supported host:
 
 ```bash
 npx --yes github:0xcaff/codex-web
@@ -59,40 +59,50 @@ nix run github:0xcaff/codex-web
 
 then open <http://127.0.0.1:8214> in a browser.
 
-the npm workflow downloads the pinned official macOS desktop archive as its
-renderer source. it also downloads and verifies the pinned CLI for the current
-OS and architecture. set `HOSTED_CODEX_APP_ZIP` to an existing official archive
-or `CODEX_CLI_PATH` to an explicit CLI when an override is required.
+for a local checkout, every host uses the same public build and server commands:
 
-### Windows
-
-install the pinned `OpenAI.Codex` Microsoft Store package, then run:
-
-```powershell
+```bash
 git clone https://github.com/0xcaff/codex-web.git
 cd codex-web
-.\setup-windows.ps1
-.\start-codex-web.ps1
+npm install
+npm run server
 ```
 
-the `.bat` launchers provide the same default setup and start flow. setup uses
-the exact Appx version recorded in the runtime manifest, extracts only the
-required files, applies the shared patches, and builds the browser and server.
+`npm install` runs the platform-aware build. macOS and Linux download the pinned
+official macOS desktop archive as the renderer source. Windows requires the
+pinned `OpenAI.Codex` Microsoft Store package and extracts its installed ASAR.
+all three hosts download and verify the pinned CLI for their OS and architecture.
 
-use explicit overrides only when testing or working with a non-default setup:
+for development, install dependencies without the lifecycle build and invoke
+the same build entry explicitly:
+
+```bash
+npm ci --ignore-scripts
+npm run build
+npm run server
+```
+
+set `HOSTED_CODEX_APP_ZIP` to an existing official archive or `CODEX_CLI_PATH`
+to an explicit CLI when an override is required. `CODEX_WEB_DOWNLOAD_PROXY`
+routes managed CLI downloads through a proxy on every host.
+
+### Windows Desktop source overrides
+
+the ordinary Windows entry remains `npm run build`. direct invocation of its
+internal adapter is only needed to test a non-default Desktop source:
 
 ```powershell
 # Build from an explicitly supplied official ASAR.
-.\setup-windows.ps1 -AppAsarPath C:\path\to\app.asar
+powershell -File .\scripts\windows\setup.ps1 `
+  -AppAsarPath C:\path\to\app.asar
 
 # Explicitly test the newest installed Store package instead of the pin.
-.\setup-windows.ps1 -UseNewestInstalledDesktop
+powershell -File .\scripts\windows\setup.ps1 `
+  -UseNewestInstalledDesktop
 
 # Route managed downloads through a proxy.
-.\setup-windows.ps1 -DownloadProxy http://127.0.0.1:7897
-
-# Run with an explicitly supplied CLI.
-.\start-codex-web.ps1 -CodexPath C:\path\to\codex.exe
+powershell -File .\scripts\windows\setup.ps1 `
+  -DownloadProxy http://127.0.0.1:7897
 ```
 
 ### sign in
@@ -106,30 +116,26 @@ codex login --device-auth
 
 ### network exposure
 
-loopback is the safe default. the Windows launcher can bind specifically to the
-current Tailscale IPv4 address:
+loopback is the safe default. the shared server entry can bind specifically to
+the current Tailscale IPv4 address on macOS, Linux, or Windows:
 
-```powershell
-.\start-codex-web.ps1 -PreferTailscale
+```bash
+npm run server -- --prefer-tailscale
 ```
 
 non-default Tailscale installations and profiles are supported:
 
-```powershell
-.\start-codex-web.ps1 -PreferTailscale `
-  -TailscalePath C:\Tools\tailscale.exe `
-  -TailscaleSocket C:\path\to\tailscaled.sock `
-  -TailscaleIPv4 100.64.0.10 `
-  -TailscaleDNSName my-host.example.ts.net
+```bash
+npm run server -- --prefer-tailscale \
+  --tailscale-path /path/to/tailscale \
+  --tailscale-socket /path/to/tailscaled.sock \
+  --tailscale-ipv4 100.64.0.10 \
+  --tailscale-dns-name my-host.example.ts.net
 ```
 
-`-PreferTailscale` fails closed when no usable Tailnet address is found. the
-server also supports a custom host and port. on macOS and Linux, pass the host
-address directly to the npm command:
-
-```powershell
-.\start-codex-web.ps1 -HostName 0.0.0.0 -Port 9000
-```
+PowerShell users can place the arguments on one line or replace each `\` with a
+backtick. `--prefer-tailscale` fails closed when no usable Tailnet address is
+found. the same server command also supports a custom host and port:
 
 ```bash
 npm run server -- --host 0.0.0.0 --port 9000

@@ -7,7 +7,7 @@ stop the build.
 ## 1. Record every version layer
 
 Check the official macOS appcast and Windows Store package independently. On
-Windows, run `setup-windows.ps1` with `-UseNewestInstalledDesktop`,
+Windows, run `scripts/windows/setup.ps1` with `-UseNewestInstalledDesktop`,
 `-SkipPinnedCli`, and `-SkipInstall` to print Appx, ASAR, brand, and Electron
 metadata. Also record the official npm metadata for each supported platform
 CLI artifact.
@@ -51,7 +51,9 @@ On Windows, pass an explicit source to the setup script after the patcher has
 been updated:
 
 ```powershell
-.\setup-windows.ps1 -AppAsarPath C:\path\to\app.asar -SkipInstall
+powershell -File .\scripts\windows\setup.ps1 `
+  -AppAsarPath C:\path\to\app.asar `
+  -SkipInstall
 ```
 
 Never commit the extracted trees or official archive.
@@ -89,10 +91,6 @@ Run the host-specific complete build:
 ```bash
 npm ci --ignore-scripts
 npm run build
-```
-
-```powershell
-.\setup-windows.ps1
 ```
 
 Then verify:

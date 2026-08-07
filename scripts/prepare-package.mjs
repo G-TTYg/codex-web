@@ -30,16 +30,21 @@ if (process.platform === "win32") {
     "-ExecutionPolicy",
     "Bypass",
     "-File",
-    "./setup-windows.ps1",
-    "-SkipInstall",
+    "./scripts/windows/setup.ps1",
   ];
+  // npm has already installed dependency lifecycle scripts before `prepare`.
+  // An explicit `npm run build` must also rebuild the host-native sqlite addon
+  // after the documented `npm ci --ignore-scripts` development install.
+  if (process.env.npm_lifecycle_event === "prepare") {
+    setupArguments.push("-SkipInstall");
+  }
   if (process.env.CODEX_CLI_PATH) setupArguments.push("-SkipPinnedCli");
   run("powershell.exe", setupArguments);
 } else {
   if (!process.env.CODEX_CLI_PATH) {
     run("node", ["./scripts/managed-runtime.mjs", "prepare"]);
   }
-  run("bash", ["./scripts/prepare"]);
+  run("bash", ["./scripts/unix/prepare.sh"]);
   run("npm", ["run", "build:browser"]);
   run("npm", ["run", "build:server"]);
 }

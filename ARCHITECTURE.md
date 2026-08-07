@@ -23,6 +23,8 @@ Windows selects the exact installed `OpenAI.Codex` Appx package recorded in
 explicit override. macOS and Linux download the pinned official macOS zip, or
 consume `HOSTED_CODEX_APP_ZIP` when supplied. Both paths converge on:
 
+- `scripts/windows/setup.ps1` and `scripts/unix/*.sh`, the platform-specific
+  source acquisition adapters behind the shared `npm run build` entry;
 - `scripts/extract-needed-asar.mjs`, which extracts only the Desktop package
   metadata, compiled shell bundles, webview, skills, and native-menu locales;
 - `scripts/patch-desktop-asar.mjs`, which validates the ChatGPT brand and applies
@@ -56,10 +58,11 @@ On every ordinary host, `scripts/managed-runtime.mjs` chooses the pinned Codex
 CLI artifact by OS and architecture, validates its npm SRI SHA-512 value, and
 extracts it below `scratch/runtime/`. `scripts/run-server.mjs` is both the npm
 binary and server entry point; it prepares the runtime when missing and then
-sets `CODEX_CLI_PATH` for the compiled server. Windows PowerShell uses the same
-manager. Explicit `CODEX_CLI_PATH`/`-CodexPath` values remain overrides. No
-`CODEX_HOME` override is applied, so the managed executable shares the host's
-normal account, configuration, and data directories.
+sets `CODEX_CLI_PATH` for the compiled server. It also owns the shared host,
+port, and optional Tailscale discovery arguments on every platform. The Windows
+build adapter uses the same runtime manager. Explicit `CODEX_CLI_PATH` values
+remain overrides. No `CODEX_HOME` override is applied, so the managed executable
+shares the host's normal account, configuration, and data directories.
 
 Nix reads the same manifest artifacts but preserves reproducibility by fetching
 the CLI into the Nix store and wrapping `codex-web` with that store path. Runtime

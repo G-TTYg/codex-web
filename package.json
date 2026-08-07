@@ -6,6 +6,7 @@
     "scripts/managed-runtime.mjs",
     "scripts/run-server.mjs",
     "scripts/runtime-versions.json",
+    "scripts/tailscale.mjs",
     "scratch/asar/**/*",
     "src/server/**/*.js",
     "src/server/electron/index.js",
@@ -20,8 +21,7 @@
     "dev:browser": "vite --config vite.browser.config.mjs",
     "build:browser": "vite build --config vite.browser.config.mjs",
     "build:server": "cd src/server && tsc",
-    "prepare:asar": "bash ./scripts/prepare_asar",
-    "setup:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./setup-windows.ps1",
+    "prepare:asar": "bash ./scripts/unix/prepare-asar.sh",
     "preserver": "npm run build:server && npm run build:browser",
     "server": "node scripts/run-server.mjs"
   },
