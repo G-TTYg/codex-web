@@ -31,9 +31,9 @@ html[${MOBILE_UI_ATTRIBUTE}="true"] .codex-mobile-context-action {
   touch-action: pan-y !important;
 }
 
-/* Touch rows use a real trailing flex slot. Status/loading nodes remain in the
-   renderer's content flow, followed by a separate 36px action lane; neither
-   control can cover the other and the selected row still paints full width. */
+/* Touch rows give content, status/loading, and actions separate natural flex
+   slots. A missing status rail contributes no width, while a present rail uses
+   only its real contents; the selected row still paints the complete width. */
 html[${MOBILE_UI_ATTRIBUTE}="true"]
   [data-codex-row-layout]:has(.codex-mobile-context-action) {
   align-items: center;
@@ -45,7 +45,27 @@ html[${MOBILE_UI_ATTRIBUTE}="true"]
   > [data-codex-row-content] {
   flex: 1 1 auto;
   min-width: 0;
+  order: 0;
   width: auto !important;
+}
+
+/* The stable status rail is absolute upstream and therefore used to share the
+   action's end coordinates. Its generated semantic marker lets touch layouts
+   restore natural flow without coupling this shim to fingerprinted classes. */
+html[${MOBILE_UI_ATTRIBUTE}="true"]
+  [data-codex-row-layout]:has(.codex-mobile-context-action)
+  > [data-codex-row-status-rail] {
+  align-items: center !important;
+  align-self: stretch;
+  flex: 0 0 auto !important;
+  height: auto !important;
+  inset: auto !important;
+  justify-content: center !important;
+  min-width: 0 !important;
+  order: 1;
+  padding: 0 !important;
+  position: static !important;
+  z-index: 1;
 }
 
 /* The renderer action rail remains absolute for Desktop hover controls. Touch
@@ -64,7 +84,7 @@ html[${MOBILE_UI_ATTRIBUTE}="true"]
   max-width: 36px !important;
   min-width: 36px !important;
   opacity: 1 !important;
-  order: 1;
+  order: 2;
   padding: 0 !important;
   pointer-events: auto !important;
   position: static !important;

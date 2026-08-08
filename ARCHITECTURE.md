@@ -101,11 +101,13 @@ instead of emulating Desktop gestures. Electron native menus cannot render in a
 browser, so the semantic patcher makes codex-web use the shared renderer's
 existing Radix context-menu branch while leaving Desktop on its native branch.
 Sidebar thread actions open the renderer's exact context-menu root. On touch
-layouts the row changes to a natural flex layout: its renderer-owned status and
-loading content remains first, followed by a separate fixed action slot, so the
-two controls cannot overlap or shorten the row background. Project and other
-renderer-owned menu controls are revealed in place. The file tree enables its
-own built-in row menu button. On touch input, the right-panel tab's existing
+layouts the row changes to a natural flex layout with explicit content,
+status/loading, and action ownership. The stable status rail uses only its real
+contents and disappears without reserving space when empty; the fixed action
+slot follows it, so the controls cannot overlap or shorten the row background.
+Project and other renderer-owned menu controls are revealed in place. The file
+tree enables its own built-in row menu button. On touch input, the right-panel
+tab's existing
 trailing action lane exposes a dedicated options entry that opens that tab's
 original context menu, including its close and panel-placement actions. No
 browser-owned action portal, copied menu, or menu-style override is used, so

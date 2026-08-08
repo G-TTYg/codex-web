@@ -346,9 +346,19 @@ replaceOnce(
   't[48]===P?e=t[49]:(e={"data-codex-context-target":`true`,onContextMenu:P},t[48]=P,t[49]=e)',
   "browser context-menu trigger target",
 );
-// Mark the row and its content surface so the touch stylesheet can move the
-// renderer-owned action rail into a natural trailing flex slot. Desktop keeps
-// the upstream absolute hover rail; no status/loading node is relocated.
+// Mark the stable status/loading rail itself instead of wrapping it at each
+// row render. This preserves the renderer's memoized element identity while
+// letting touch layouts place both trailing rails in natural flex slots.
+// Desktop keeps the upstream absolute positioning because the marker has no
+// style of its own.
+replaceOnce(
+  appInitialPath,
+  'h=(0,r0.jsx)(`div`,{"data-hover-card-open-immediately":!0,className:p,children:m})',
+  'h=(0,r0.jsx)(`div`,{"data-codex-row-status-rail":!0,"data-hover-card-open-immediately":!0,className:p,children:m})',
+  "browser row status rail marker",
+);
+// Mark the row and its content surface so the touch stylesheet can give the
+// content, status rail, and action rail separate natural-flow ownership.
 replaceOnce(
   appInitialPath,
   "className:`flex h-full w-full items-center text-sm leading-4`,children:[Rn,zn,Bn]",
