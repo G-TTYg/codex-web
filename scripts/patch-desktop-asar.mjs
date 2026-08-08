@@ -248,9 +248,9 @@ insertAfterOnce(
 );
 replaceOnce(
   indexHtmlPath,
-  '<meta name="viewport" content="width=device-width, initial-scale=1.0" />',
   '<meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />',
-  "software-keyboard viewport policy",
+  '<meta name="viewport" content="width=device-width, initial-scale=1.0" />',
+  "native software-keyboard viewport policy",
 );
 insertAfterOnce(
   indexHtmlPath,

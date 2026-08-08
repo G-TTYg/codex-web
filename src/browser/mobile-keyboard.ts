@@ -39,14 +39,17 @@ let installed = false;
 
 type ViewportSize = {
   height: number;
-  width: number;
+  layoutWidth: number;
 };
 
 function viewportSize(): ViewportSize {
   const viewport = window.visualViewport;
   return {
     height: viewport?.height ?? window.innerHeight,
-    width: viewport?.width ?? window.innerWidth,
+    // The visual viewport can narrow while a keyboard or its accessory UI is
+    // animating. The layout viewport changes only for rotation, split view, or
+    // a real window resize, which are the baseline changes relevant here.
+    layoutWidth: window.innerWidth,
   };
 }
 
@@ -176,7 +179,10 @@ export function installMobileKeyboardViewport(): void {
     }
 
     const current = viewportSize();
-    if (Math.abs(current.width - baseline.width) > VIEWPORT_WIDTH_EPSILON_PX) {
+    if (
+      Math.abs(current.layoutWidth - baseline.layoutWidth) >
+      VIEWPORT_WIDTH_EPSILON_PX
+    ) {
       // Rotation and split-view resizing establish a new non-keyboard
       // baseline instead of being mistaken for vertical keyboard occlusion.
       cancelRestore();

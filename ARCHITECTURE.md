@@ -150,13 +150,12 @@ cancelled while touch is the active input. Hardware mouse right click and mouse
 drag remain Desktop-owned on hybrid devices.
 Mobile search surfaces remain mounted when software-keyboard dismissal blurs
 their input. Composer and other text-editing sessions also track the Visual
-Viewport on touch devices. Browsers that support the viewport
-`interactive-widget` policy resize page content for the software keyboard;
-after WebKit expands the viewport, the fallback clears only residual document
-root offsets while preserving renderer-owned conversation/editor scroll
-positions. Focus changes alone never move the document, and a newly focused
-editor invalidates every queued recovery frame from the previous keyboard
-session. The server shim
+Viewport on touch devices while retaining the browser's native interactive
+widget policy, so focusing an editor remains browser-owned. After WebKit
+expands the viewport, the fallback clears only residual document root offsets
+while preserving renderer-owned conversation/editor scroll positions. Focus
+changes alone never move the document, and a newly focused editor invalidates
+every queued recovery frame from the previous keyboard session. The server shim
 owns privileged host behavior such as filesystem access and launching the
 Codex app-server. Terminal creation remains in the official Desktop shell and
 resolves the project-owned `node-pty` installation through Node's normal module
