@@ -14,6 +14,20 @@ const MOBILE_UI_ATTRIBUTE = "data-codex-mobile-ui";
 const MOBILE_LAYOUT_SELECTOR = `html[${MOBILE_LAYOUT_ATTRIBUTE}="true"]`;
 
 const MOBILE_LAYOUT_STYLES = `
+${MOBILE_LAYOUT_SELECTOR} {
+  /* These are concrete renderer-matched colors rather than system colors or
+     upstream surface tokens. Safari can resolve either of those inputs to a
+     transparent value, while Chromium does not, so codex-web owns the fill for
+     the overlay drawers it creates. */
+  --codex-web-phone-left-drawer-background: #f9f9f9;
+  --codex-web-phone-right-drawer-background: #fff;
+}
+
+${MOBILE_LAYOUT_SELECTOR}.electron-dark {
+  --codex-web-phone-left-drawer-background: #000;
+  --codex-web-phone-right-drawer-background: #181818;
+}
+
 ${MOBILE_LAYOUT_SELECTOR},
 ${MOBILE_LAYOUT_SELECTOR} body {
   max-width: 100%;
@@ -27,12 +41,7 @@ ${MOBILE_LAYOUT_SELECTOR} aside.app-shell-left-panel {
   inset: 0 auto 0 0;
   z-index: 40;
   isolation: isolate;
-  background:
-    linear-gradient(
-      var(--color-background-surface-under, Canvas),
-      var(--color-background-surface-under, Canvas)
-    ),
-    Canvas;
+  background: var(--codex-web-phone-left-drawer-background) !important;
   box-shadow: 12px 0 28px rgb(0 0 0 / 28%);
 }
 
@@ -49,12 +58,7 @@ ${MOBILE_LAYOUT_SELECTOR} aside[data-app-shell-focus-area="right-panel"] {
   overflow: hidden !important;
   isolation: isolate;
   overscroll-behavior: contain;
-  background:
-    linear-gradient(
-      var(--color-background-surface, Canvas),
-      var(--color-background-surface, Canvas)
-    ),
-    Canvas;
+  background: var(--codex-web-phone-right-drawer-background) !important;
   box-shadow: -12px 0 28px rgb(0 0 0 / 28%);
 }
 

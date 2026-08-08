@@ -98,8 +98,11 @@ iPads and phones begin in touch mode, while hybrid desktops switch on actual
 touch/pen and mouse input. A captured `touchstart` remains authoritative when
 iPadOS WebKit labels its compatibility pointer sequence as mouse. Input
 capability does not select the page layout. Only phone-width viewports up to 700
-CSS pixels use opaque overlay drawers; full-size iPads retain the renderer's
-persistent Desktop sidebars in either orientation.
+CSS pixels use opaque overlay drawers. Those codex-web-owned drawers use
+explicit renderer-matched light and dark fills instead of CSS system colors or
+upstream surface tokens, whose transparent resolution differs between WebKit
+and Chromium. Full-size iPads retain the renderer's persistent Desktop sidebars
+in either orientation.
 The renderer's application-menu/header layout remains intact, and the browser
 layer owns outside-tap dismissal on phone layouts.
 Outside-tap dismissal observes the real underlying target after a complete
