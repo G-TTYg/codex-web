@@ -173,8 +173,10 @@ npm run server -- --prefer-tailscale
 
 the login dialog exchanges the password for an HttpOnly, SameSite=Strict
 session cookie. sessions expire when the browser session ends or the server is
-restarted. leaving `CODEX_WEB_AUTH_PASSWORD` unset preserves the unauthenticated
-local-development behavior.
+restarted. its text follows the browser's language preferences, with English,
+Traditional Chinese, and Simplified Chinese included. leaving
+`CODEX_WEB_AUTH_PASSWORD` unset preserves the unauthenticated local-development
+behavior.
 
 binding `0.0.0.0` exposes the server on every host interface, including LAN,
 Tailscale, and potentially public interfaces. prefer a specific Tailnet

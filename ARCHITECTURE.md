@@ -94,7 +94,10 @@ handler independently validates the same random HttpOnly session before
 accepting the IPC WebSocket. Login credentials are constant-time compared and
 never enter renderer JavaScript. The server removes the password from its
 environment before the Desktop shell can start Codex subprocesses. The
-in-memory session intentionally becomes invalid when the server restarts.
+in-memory session intentionally becomes invalid when the server restarts. The
+server-rendered login page negotiates English, Traditional Chinese, or
+Simplified Chinese from `Accept-Language` and declares the selected content
+language without loading client-side localization code.
 
 The browser shim handles local browser concerns such as history mapping, mobile
 sidebar state, touch interaction fallbacks, file/workspace selection, and local

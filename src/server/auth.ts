@@ -6,6 +6,36 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 const AUTH_PATH = "/__auth/login";
 const SESSION_COOKIE_NAME = "codex_web_session";
 
+type LoginLocale = "en" | "zh-Hans" | "zh-Hant";
+
+type LoginMessages = {
+  description: string;
+  invalidPassword: string;
+  passwordLabel: string;
+  submit: string;
+};
+
+const LOGIN_MESSAGES: Record<LoginLocale, LoginMessages> = {
+  en: {
+    description: "Enter the access password to continue.",
+    invalidPassword: "Incorrect password. Please try again.",
+    passwordLabel: "Password",
+    submit: "Continue",
+  },
+  "zh-Hans": {
+    description: "输入访问密码以继续。",
+    invalidPassword: "密码不正确，请重试。",
+    passwordLabel: "密码",
+    submit: "登录",
+  },
+  "zh-Hant": {
+    description: "輸入存取密碼以繼續。",
+    invalidPassword: "密碼不正確，請重試。",
+    passwordLabel: "密碼",
+    submit: "登入",
+  },
+};
+
 function digest(value: string): Buffer {
   return createHash("sha256").update(value, "utf8").digest();
 }
@@ -33,14 +63,81 @@ function safeNextPath(requestUrl: string): string {
     : "/";
 }
 
-function loginPage(nextPath: string, invalidPassword: boolean): string {
+function localeForLanguageTag(languageTag: string): LoginLocale | null {
+  const subtags = languageTag
+    .trim()
+    .toLowerCase()
+    .replaceAll("_", "-")
+    .split("-");
+  if (subtags[0] === "en") {
+    return "en";
+  }
+  if (subtags[0] !== "zh") {
+    return null;
+  }
+  if (
+    subtags.includes("hant") ||
+    subtags.includes("tw") ||
+    subtags.includes("hk") ||
+    subtags.includes("mo")
+  ) {
+    return "zh-Hant";
+  }
+  return "zh-Hans";
+}
+
+function preferredLoginLocale(
+  acceptLanguage: string | string[] | undefined,
+): LoginLocale {
+  const header = Array.isArray(acceptLanguage)
+    ? acceptLanguage.join(",")
+    : (acceptLanguage ?? "");
+  const candidates = header
+    .split(",")
+    .map((entry, index) => {
+      const [languageTag = "", ...parameters] = entry.split(";");
+      const qualityParameter = parameters.find((parameter) =>
+        /^\s*q\s*=/i.test(parameter),
+      );
+      const quality = qualityParameter
+        ? Number.parseFloat(qualityParameter.split("=", 2)[1]?.trim() ?? "")
+        : 1;
+      return {
+        index,
+        languageTag,
+        quality:
+          Number.isFinite(quality) && quality >= 0 && quality <= 1
+            ? quality
+            : 0,
+      };
+    })
+    .filter(({ quality }) => quality > 0)
+    .sort(
+      (left, right) => right.quality - left.quality || left.index - right.index,
+    );
+
+  for (const { languageTag } of candidates) {
+    const locale = localeForLanguageTag(languageTag);
+    if (locale !== null) {
+      return locale;
+    }
+  }
+  return "en";
+}
+
+function loginPage(
+  nextPath: string,
+  invalidPassword: boolean,
+  locale: LoginLocale,
+): string {
   const action = `${AUTH_PATH}?next=${encodeURIComponent(nextPath)}`;
+  const messages = LOGIN_MESSAGES[locale];
   const error = invalidPassword
-    ? '<p class="error" role="alert">密碼不正確，請重試。</p>'
+    ? `<p class="error" role="alert">${messages.invalidPassword}</p>`
     : "";
 
   return `<!doctype html>
-<html lang="zh-Hant">
+<html lang="${locale}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -117,11 +214,11 @@ function loginPage(nextPath: string, invalidPassword: boolean): string {
     <dialog open aria-labelledby="auth-title">
       <form method="post" action="${escapeHtml(action)}">
         <h1 id="auth-title">Codex Web</h1>
-        <p>輸入訪問密碼以繼續。</p>
-        <label for="password">密碼</label>
+        <p>${messages.description}</p>
+        <label for="password">${messages.passwordLabel}</label>
         <input id="password" name="password" type="password" autocomplete="current-password" autofocus required />
         ${error}
-        <button type="submit">進入</button>
+        <button type="submit">${messages.submit}</button>
       </form>
     </dialog>
   </body>
@@ -133,7 +230,9 @@ function sendLoginPage(
   nextPath: string,
   invalidPassword: boolean,
   statusCode: number,
+  acceptLanguage: string | string[] | undefined,
 ): FastifyReply {
+  const locale = preferredLoginLocale(acceptLanguage);
   return reply
     .code(statusCode)
     .headers({
@@ -141,11 +240,13 @@ function sendLoginPage(
       "content-security-policy":
         "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
       "content-type": "text/html; charset=utf-8",
+      "content-language": locale,
       "referrer-policy": "no-referrer",
+      vary: "Accept-Language",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
     })
-    .send(loginPage(nextPath, invalidPassword));
+    .send(loginPage(nextPath, invalidPassword, locale));
 }
 
 function cookieValues(headers: IncomingHttpHeaders, name: string): string[] {
@@ -204,13 +305,25 @@ export function createPasswordAuth(password: string | undefined): PasswordAuth {
         }
 
         if (request.method === "GET" || request.method === "HEAD") {
-          return sendLoginPage(reply, request.url, false, 401);
+          return sendLoginPage(
+            reply,
+            request.url,
+            false,
+            401,
+            request.headers["accept-language"],
+          );
         }
         return reply.code(401).send({ error: "Unauthorized" });
       });
 
       app.get(AUTH_PATH, async (request, reply) =>
-        sendLoginPage(reply, safeNextPath(request.url), false, 200),
+        sendLoginPage(
+          reply,
+          safeNextPath(request.url),
+          false,
+          200,
+          request.headers["accept-language"],
+        ),
       );
 
       app.post(AUTH_PATH, { bodyLimit: 4 * 1024 }, async (request, reply) => {
@@ -221,7 +334,13 @@ export function createPasswordAuth(password: string | undefined): PasswordAuth {
         if (
           !constantTimeMatches(expectedPassword, form.get("password") ?? "")
         ) {
-          return sendLoginPage(reply, nextPath, true, 401);
+          return sendLoginPage(
+            reply,
+            nextPath,
+            true,
+            401,
+            request.headers["accept-language"],
+          );
         }
 
         const secure = request.protocol === "https" ? "; Secure" : "";
