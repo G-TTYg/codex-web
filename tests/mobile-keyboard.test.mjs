@@ -249,10 +249,10 @@ async function createHarness() {
 
 const lockAttribute = "data-codex-visual-viewport-lock";
 const keyboardAttribute = "data-codex-software-keyboard";
-const heightProperty = "--codex-keyboard-viewport-height";
-const leftProperty = "--codex-keyboard-viewport-left";
-const topProperty = "--codex-keyboard-viewport-top";
-const widthProperty = "--codex-keyboard-viewport-width";
+const heightProperty = "--codex-keyboard-shell-height";
+const leftProperty = "--codex-keyboard-shell-left";
+const topProperty = "--codex-keyboard-shell-top";
+const widthProperty = "--codex-keyboard-shell-width";
 
 test("mobile keyboard viewport coordinator", async (suite) => {
   await suite.test(
@@ -280,10 +280,10 @@ test("mobile keyboard viewport coordinator", async (suite) => {
       assert.notEqual(harness.root.getAttribute(keyboardAttribute), "true");
       assert.equal(
         harness.root.style.getPropertyValue(heightProperty),
-        "736px",
+        "768px",
       );
       assert.equal(harness.root.style.getPropertyValue(leftProperty), "3px");
-      assert.equal(harness.root.style.getPropertyValue(topProperty), "12px");
+      assert.equal(harness.root.style.getPropertyValue(topProperty), "-20px");
       assert.equal(
         harness.root.style.getPropertyValue(widthProperty),
         "1000px",
@@ -302,9 +302,59 @@ test("mobile keyboard viewport coordinator", async (suite) => {
 
       assert.equal(
         harness.root.style.getPropertyValue(heightProperty),
-        "460px",
+        "768px",
       );
-      assert.equal(harness.root.style.getPropertyValue(topProperty), "48px");
+      assert.equal(harness.root.style.getPropertyValue(topProperty), "-260px");
+      assert.equal(harness.root.getAttribute(keyboardAttribute), "true");
+    },
+  );
+
+  await suite.test(
+    "moves the whole shell upward and aligns its bottom with the keyboard",
+    async () => {
+      const harness = await createHarness();
+      harness.focus(harness.input());
+
+      harness.viewport.height = 600;
+      harness.viewportChanged();
+      assert.equal(
+        harness.root.style.getPropertyValue(heightProperty),
+        "768px",
+      );
+      assert.equal(harness.root.style.getPropertyValue(topProperty), "-168px");
+
+      harness.viewport.height = 450;
+      harness.viewportChanged();
+      const shellHeight = Number.parseFloat(
+        harness.root.style.getPropertyValue(heightProperty),
+      );
+      const shellTop = Number.parseFloat(
+        harness.root.style.getPropertyValue(topProperty),
+      );
+      assert.equal(shellTop, -318);
+      assert.equal(shellTop + shellHeight, 450);
+    },
+  );
+
+  await suite.test(
+    "does not double-apply WebKit's Visual Viewport pan",
+    async () => {
+      const harness = await createHarness();
+      harness.focus(harness.input());
+      Object.assign(harness.viewport, { height: 450, offsetTop: 100 });
+      harness.viewportChanged("scroll");
+
+      const shellHeight = Number.parseFloat(
+        harness.root.style.getPropertyValue(heightProperty),
+      );
+      const shellTop = Number.parseFloat(
+        harness.root.style.getPropertyValue(topProperty),
+      );
+      assert.equal(shellTop, -218);
+      assert.equal(
+        shellTop + shellHeight,
+        harness.viewport.offsetTop + harness.viewport.height,
+      );
       assert.equal(harness.root.getAttribute(keyboardAttribute), "true");
     },
   );
@@ -316,6 +366,8 @@ test("mobile keyboard viewport coordinator", async (suite) => {
     harness.document.body.scrollTop = 23;
 
     harness.focus(input);
+    assert.equal(harness.root.style.getPropertyValue(heightProperty), "768px");
+    assert.equal(harness.root.style.getPropertyValue(topProperty), "0px");
     harness.blur(input);
     harness.clock.runFrame();
 
@@ -348,8 +400,9 @@ test("mobile keyboard viewport coordinator", async (suite) => {
       assert.equal(harness.root.getAttribute(keyboardAttribute), "true");
       assert.equal(
         harness.root.style.getPropertyValue(heightProperty),
-        "450px",
+        "768px",
       );
+      assert.equal(harness.root.style.getPropertyValue(topProperty), "-318px");
     },
   );
 
@@ -371,14 +424,20 @@ test("mobile keyboard viewport coordinator", async (suite) => {
       assert.deepEqual(harness.scrollCalls, [[0, 0]]);
       assert.equal(harness.root.getAttribute(keyboardAttribute), "false");
       assert.equal(harness.root.getAttribute(lockAttribute), "true");
+      assert.equal(
+        harness.root.style.getPropertyValue(heightProperty),
+        "768px",
+      );
+      assert.equal(harness.root.style.getPropertyValue(topProperty), "0px");
 
       harness.viewport.height = 440;
       harness.viewportChanged();
       assert.equal(harness.root.getAttribute(keyboardAttribute), "true");
       assert.equal(
         harness.root.style.getPropertyValue(heightProperty),
-        "440px",
+        "768px",
       );
+      assert.equal(harness.root.style.getPropertyValue(topProperty), "-328px");
     },
   );
 
@@ -397,6 +456,7 @@ test("mobile keyboard viewport coordinator", async (suite) => {
     assert.equal(harness.root.getAttribute(keyboardAttribute), "false");
     assert.equal(harness.root.getAttribute(lockAttribute), "false");
     assert.equal(harness.root.style.getPropertyValue(heightProperty), "");
+    assert.equal(harness.root.style.getPropertyValue(topProperty), "");
   });
 
   await suite.test(
@@ -415,6 +475,11 @@ test("mobile keyboard viewport coordinator", async (suite) => {
       harness.viewportChanged();
       harness.clock.runFrames(20);
       assert.deepEqual(harness.scrollCalls, [[0, 0]]);
+      assert.equal(
+        harness.root.style.getPropertyValue(heightProperty),
+        "650px",
+      );
+      assert.equal(harness.root.style.getPropertyValue(topProperty), "0px");
 
       harness.blur(first);
       harness.clock.runFrame();

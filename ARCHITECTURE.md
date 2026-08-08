@@ -153,18 +153,22 @@ their input. Composer and other text-editing sessions also track the Visual
 Viewport on touch devices while retaining the browser's native interactive
 widget policy. The extracted Desktop renderer fixes `body` and `#root` to
 `100vh`, which remains the obscured Layout Viewport height on mobile WebKit.
-The browser shim pins that complete app shell to the Visual Viewport as soon as
-an editable surface receives focus, before keyboard-height detection. It tracks
-the opening and closing animation through both viewport events and a bounded
-animation-frame sampler, so delayed WebKit events, small height changes, and
-focus arriving mid-animation cannot leave the shell behind the keyboard.
-Keyboard detection is used only for close cleanup. After WebKit expands the
-viewport, the constraint is removed when focus has left and the fallback clears
-only residual document root offsets while preserving renderer-owned
-conversation/editor scroll positions. If iOS dismisses the keyboard without
-blurring the editor, the full-size constraint stays armed for a later reopen.
-A newly focused editor invalidates every queued recovery frame from the
-previous keyboard session.
+The browser shim preserves that complete app shell's stable pre-keyboard height
+as soon as an editable surface receives focus. Rather than reflowing the
+renderer into the shorter Visual Viewport, it moves the entire shell upward by
+the bottom edge that the viewport no longer exposes, keeping the composer at
+the keyboard boundary. `offsetTop` participates in the visible-bottom
+calculation, so WebKit's own focus pan reduces this translation instead of
+being applied twice. The shim tracks opening and closing through both viewport
+events and a bounded animation-frame sampler, so delayed events, small height
+changes, and focus arriving mid-animation cannot leave the shell behind the
+keyboard. Keyboard detection is used only for close cleanup. After WebKit
+expands the viewport, the constraint is removed when focus has left and the
+fallback clears only residual document root offsets while preserving
+renderer-owned conversation/editor scroll positions. If iOS dismisses the
+keyboard without blurring the editor, the restored full-size constraint stays
+armed for a later reopen. A newly focused editor invalidates every queued
+recovery frame from the previous keyboard session.
 The server shim owns privileged host behavior such as filesystem access and
 launching the Codex app-server. Terminal creation remains in the official Desktop shell and
 resolves the project-owned `node-pty` installation through Node's normal module

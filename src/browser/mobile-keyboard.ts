@@ -4,10 +4,10 @@
  * The Desktop renderer sizes body and #root to 100vh. Software keyboards only
  * shrink the Visual Viewport on mobile WebKit, so the composer otherwise stays
  * at the bottom of the obscured Desktop-height shell. As soon as an editable
- * surface receives focus, pin the whole app shell to the Visual Viewport and
- * track WebKit's animation independently of keyboard-detection timing. On
- * close, normalize only the document root; renderer-owned conversation and
- * editor scrollers retain their positions.
+ * surface receives focus, preserve the stable shell height and move the whole
+ * shell upward by the part of its bottom edge that the Visual Viewport no
+ * longer exposes. On close, normalize only the document root; renderer-owned
+ * conversation and editor scrollers retain their positions.
  */
 
 import { hasTouchInputCapability } from "./mobile-layout";
@@ -34,16 +34,16 @@ const EDITABLE_SELECTOR = [
 ].join(", ");
 const KEYBOARD_ATTRIBUTE = "data-codex-software-keyboard";
 const VIEWPORT_LOCK_ATTRIBUTE = "data-codex-visual-viewport-lock";
-const KEYBOARD_HEIGHT_PROPERTY = "--codex-keyboard-viewport-height";
-const KEYBOARD_LEFT_PROPERTY = "--codex-keyboard-viewport-left";
-const KEYBOARD_TOP_PROPERTY = "--codex-keyboard-viewport-top";
-const KEYBOARD_WIDTH_PROPERTY = "--codex-keyboard-viewport-width";
+const KEYBOARD_HEIGHT_PROPERTY = "--codex-keyboard-shell-height";
+const KEYBOARD_LEFT_PROPERTY = "--codex-keyboard-shell-left";
+const KEYBOARD_TOP_PROPERTY = "--codex-keyboard-shell-top";
+const KEYBOARD_WIDTH_PROPERTY = "--codex-keyboard-shell-width";
 const KEYBOARD_HEIGHT_THRESHOLD_PX = 80;
 const VIEWPORT_WIDTH_EPSILON_PX = 2;
 const RESTORE_DELAY_MS = 160;
 const VIEWPORT_ANIMATION_TRACK_MS = 1_200;
 
-const KEYBOARD_VIEWPORT_STYLES = `
+const KEYBOARD_SHELL_STYLES = `
 html[${VIEWPORT_LOCK_ATTRIBUTE}="true"] {
   overflow: hidden !important;
 }
@@ -92,26 +92,38 @@ function viewportSize(): ViewportSize {
   };
 }
 
-function installKeyboardViewportStyles(): void {
+function installKeyboardShellStyles(): void {
   if (document.querySelector("style[data-codex-mobile-keyboard]")) {
     return;
   }
 
   const style = document.createElement("style");
   style.dataset.codexMobileKeyboard = "true";
-  style.textContent = KEYBOARD_VIEWPORT_STYLES;
+  style.textContent = KEYBOARD_SHELL_STYLES;
   (document.head ?? document.documentElement).append(style);
 }
 
-function setVisualViewportBounds(viewport: ViewportSize): void {
+function setKeyboardShellBounds(
+  viewport: ViewportSize,
+  baseline: ViewportSize,
+): void {
+  const baselineBottom = baseline.top + baseline.height;
+  const visibleBottom = viewport.top + viewport.height;
+  const bottomOcclusion = Math.max(0, baselineBottom - visibleBottom);
+  const shellTop = baseline.top - bottomOcclusion;
   const root = document.documentElement;
-  root.style.setProperty(KEYBOARD_HEIGHT_PROPERTY, `${viewport.height}px`);
+  // Keep the pre-keyboard shell height. Shrinking it here reflows the Desktop
+  // renderer and is what made the composer disappear. Aligning its bottom to
+  // the Visual Viewport instead moves every renderer-owned surface together.
+  // offsetTop contributes to visibleBottom, so WebKit's own focus pan reduces
+  // our shift instead of being applied a second time.
+  root.style.setProperty(KEYBOARD_HEIGHT_PROPERTY, `${baseline.height}px`);
   root.style.setProperty(KEYBOARD_LEFT_PROPERTY, `${viewport.left}px`);
-  root.style.setProperty(KEYBOARD_TOP_PROPERTY, `${viewport.top}px`);
+  root.style.setProperty(KEYBOARD_TOP_PROPERTY, `${shellTop}px`);
   root.style.setProperty(KEYBOARD_WIDTH_PROPERTY, `${viewport.width}px`);
 }
 
-function clearVisualViewportBounds(): void {
+function clearKeyboardShellBounds(): void {
   const root = document.documentElement;
   root.style.removeProperty(KEYBOARD_HEIGHT_PROPERTY);
   root.style.removeProperty(KEYBOARD_LEFT_PROPERTY);
@@ -168,7 +180,7 @@ export function installMobileKeyboardViewport(): void {
     return;
   }
   installed = true;
-  installKeyboardViewportStyles();
+  installKeyboardShellStyles();
 
   let baseline = viewportSize();
   let minimumSessionHeight = baseline.height;
@@ -196,13 +208,13 @@ export function installMobileKeyboardViewport(): void {
     if (locked) {
       // Write the initial bounds before enabling the selector so there is no
       // frame where the renderer's 100vh body is fixed with fallback sizes.
-      setVisualViewportBounds(viewport);
+      setKeyboardShellBounds(viewport, baseline);
       document.documentElement.setAttribute(VIEWPORT_LOCK_ATTRIBUTE, "true");
       return;
     }
 
     document.documentElement.setAttribute(VIEWPORT_LOCK_ATTRIBUTE, "false");
-    clearVisualViewportBounds();
+    clearKeyboardShellBounds();
   };
 
   const stopViewportAnimationWatch = (): void => {
@@ -275,19 +287,19 @@ export function installMobileKeyboardViewport(): void {
           restoreInProgress = false;
           keyboardWasOpen = false;
           setKeyboardOpen(false);
+          baseline = viewportSize();
+          minimumSessionHeight = baseline.height;
           editorSessionActive = isEditableTarget(document.activeElement);
           if (editorSessionActive) {
             // iOS can dismiss its keyboard without blurring the editor. Keep
             // the viewport contract armed so reopening the keyboard does not
             // depend on another focus event.
-            setViewportLocked(true);
+            setViewportLocked(true, baseline);
           } else {
             stopViewportAnimationWatch();
             setViewportLocked(false);
           }
           resetRootScroll();
-          baseline = viewportSize();
-          minimumSessionHeight = baseline.height;
         });
       });
     }, RESTORE_DELAY_MS);
@@ -303,9 +315,6 @@ export function installMobileKeyboardViewport(): void {
     }
 
     const current = viewportSize();
-    if (viewportLocked) {
-      setVisualViewportBounds(current);
-    }
     if (
       Math.abs(current.layoutWidth - baseline.layoutWidth) >
       VIEWPORT_WIDTH_EPSILON_PX
@@ -316,8 +325,15 @@ export function installMobileKeyboardViewport(): void {
       baseline = current;
       minimumSessionHeight = current.height;
       if (keyboardWasOpen) {
+        if (viewportLocked) {
+          setKeyboardShellBounds(current, baseline);
+        }
         return;
       }
+    }
+
+    if (viewportLocked) {
+      setKeyboardShellBounds(current, baseline);
     }
 
     if (!editorSessionActive && !keyboardWasOpen) {
