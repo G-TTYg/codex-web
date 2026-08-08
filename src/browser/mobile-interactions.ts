@@ -31,12 +31,14 @@ html[${MOBILE_UI_ATTRIBUTE}="true"] .codex-mobile-context-action {
   touch-action: pan-y !important;
 }
 
-/* The upstream rail is absolutely positioned. Reserve its native 52px lane
-   explicitly so a permanently visible touch action cannot cover row text. */
+/* The upstream rail is absolutely positioned. Reserve only the title's final
+   36px for its single touch action; padding the row itself makes flex layouts
+   shrink the selected background and wastes an empty strip at the sidebar. */
 html[${MOBILE_UI_ATTRIBUTE}="true"]
-  :is([role="button"], [role="treeitem"]):has(.codex-mobile-context-action) {
+  :is([role="button"], [role="treeitem"]):has(.codex-mobile-context-action)
+  [data-thread-title-trigger] {
   box-sizing: border-box;
-  padding-inline-end: 56px !important;
+  padding-inline-end: 36px !important;
 }
 
 /* Thread actions use the renderer's existing trailing rail. On touch layouts
