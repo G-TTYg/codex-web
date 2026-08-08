@@ -134,8 +134,9 @@ Then verify:
 - the narrow-viewport and portrait touch-tablet left and right overlay drawers,
   outside-tap dismissal, unchanged application-menu/header controls, opaque
   panel surfaces, touch composer, keyboard-dismiss-safe search, explicit
-  per-item action buttons, bottom action sheets for context and hover-only
-  operations, first-tap links beneath an open drawer, external-link fallback,
+  renderer-native inline row actions, original context action callbacks in
+  touch-sized sheets where no native button exists, first-tap links beneath an
+  open drawer, external-link fallback,
   native Projects/file-tree scrolling from nested row controls, absence of
   touch long-press menus and touch dragging, hardware right click, and mouse
   dragging work;

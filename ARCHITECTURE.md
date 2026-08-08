@@ -87,11 +87,15 @@ click and does not consume its pointer sequence, so links and controls remain
 first-tap operable while a drawer is open.
 `src/browser/mobile-interactions.ts` owns a separate mobile interaction layer
 instead of emulating Desktop gestures. The semantic patcher marks renderer
-context-menu owners; the browser layer adds one portal-based action button per
-visible target and collects hover-only controls into a touch-sized bottom
-sheet. Renderer-owned pointer menus use the same bottom-sheet presentation.
-The portal buttons listen only for completed clicks and permit `pan-y`, so a
-normal pointer sequence remains native scrolling or the row's primary action.
+context-menu owners and exposes their already-localized action definitions to
+the browser layer. Existing renderer-owned hover actions are revealed in place
+as inline row controls on touch layouts, preserving their original callbacks
+and menu implementations. A context-only row receives a visually embedded
+row-end fallback, whose touch-sized sheet invokes the same renderer action
+callbacks instead of duplicating commands. Renderer-owned pointer menus use
+the same bottom-sheet presentation. Action controls listen only for completed
+clicks and permit `pan-y`, so a normal pointer sequence remains native
+scrolling or the row's primary action.
 The shared semantic patcher removes Radix touch long-press menus, disables the
 file tree's custom touch-drag activator, and makes dnd-kit's PointerSensor reject
 every non-mouse pointer without consuming its event. HTML drag starts are also

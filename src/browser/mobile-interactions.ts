@@ -4,6 +4,7 @@ const MOBILE_UI_ATTRIBUTE = "data-codex-mobile-ui";
 const TOUCH_INPUT_ATTRIBUTE = "data-codex-touch-input";
 const CONTEXT_TARGET_SELECTOR = '[data-codex-context-target="true"]';
 const ACTION_LAYER_ATTRIBUTE = "data-codex-mobile-action-layer";
+const NATIVE_ACTIONS_ATTRIBUTE = "data-codex-mobile-native-actions";
 
 const MOBILE_INTERACTION_STYLES = `
 html[${MOBILE_UI_ATTRIBUTE}="true"] [${ACTION_LAYER_ATTRIBUTE}] {
@@ -16,21 +17,42 @@ html[${MOBILE_UI_ATTRIBUTE}="true"] [${ACTION_LAYER_ATTRIBUTE}] {
 html[${MOBILE_UI_ATTRIBUTE}="true"] [data-codex-mobile-action-trigger] {
   align-items: center;
   appearance: none;
-  background: color-mix(in srgb, var(--color-token-main-surface-primary, Canvas) 92%, transparent);
-  border: 1px solid var(--color-token-border, rgb(127 127 127 / 35%));
-  border-radius: 999px;
-  box-shadow: 0 1px 5px rgb(0 0 0 / 18%);
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
   color: var(--color-token-text-secondary, CanvasText);
   display: flex;
-  font: 700 18px/1 system-ui, sans-serif;
-  height: 34px;
+  font: 650 17px/1 system-ui, sans-serif;
+  height: 30px;
   justify-content: center;
   letter-spacing: 1px;
-  padding: 0 0 5px;
+  padding: 0 0 4px;
   pointer-events: auto;
   position: fixed;
   touch-action: pan-y;
-  width: 34px;
+  width: 30px;
+}
+
+html[${MOBILE_UI_ATTRIBUTE}="true"] [data-codex-mobile-action-trigger]:active {
+  background: var(--color-token-list-hover-background, rgb(127 127 127 / 16%));
+}
+
+/* Reuse renderer-owned row controls instead of covering every row with a
+   portal affordance. The marker is applied only to a hover-gated wrapper. */
+html[${MOBILE_UI_ATTRIBUTE}="true"] [${NATIVE_ACTIONS_ATTRIBUTE}="true"] {
+  display: flex !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+  width: auto !important;
+}
+
+html[${MOBILE_UI_ATTRIBUTE}="true"]
+  [${NATIVE_ACTIONS_ATTRIBUTE}="true"]
+  :is(button, a, [role="button"]) {
+  min-height: 30px !important;
+  min-width: 30px !important;
+  touch-action: pan-y !important;
 }
 
 html[${MOBILE_UI_ATTRIBUTE}="true"] [${ACTION_LAYER_ATTRIBUTE}][data-scrolling="true"]
@@ -164,13 +186,34 @@ html[${TOUCH_INPUT_ATTRIBUTE}="true"] [data-file-tree-virtualized-scroll] * {
 `;
 
 type MobileAction = {
-  control: HTMLElement;
+  activate: () => void;
+  disabled?: boolean;
+  key: HTMLElement | string;
   label: string;
+};
+
+type RendererMenuItem = {
+  checked?: boolean;
+  enabled?: boolean;
+  id: string;
+  nativeLabel?: string;
+  submenu?: RendererMenuItem[];
+  type?: string;
+};
+
+type RendererMenuSelect = (id: string, items: RendererMenuItem[]) => void;
+
+type MobileActionRequestEvent = MouseEvent & {
+  codexMobileActionRequest?: (
+    items: RendererMenuItem[],
+    select: RendererMenuSelect,
+  ) => void;
 };
 
 type ActionTarget = {
   actions: MobileAction[];
   contextTarget: HTMLElement | null;
+  hasNativeControls: boolean;
   host: HTMLElement;
 };
 
@@ -183,17 +226,14 @@ const messages = {
   en: {
     actions: "Actions",
     close: "Close",
-    more: "More actions",
   },
   zhHans: {
     actions: "操作",
     close: "关闭",
-    more: "更多操作",
   },
   zhHant: {
     actions: "操作",
     close: "關閉",
-    more: "更多操作",
   },
 };
 
@@ -254,6 +294,19 @@ function hasHoverVisibilityClass(element: Element): boolean {
   );
 }
 
+function exposeNativeControl(control: HTMLElement): void {
+  let candidate: HTMLElement | null = control;
+  for (let depth = 0; candidate && depth < 5; depth += 1) {
+    if (hasHoverVisibilityClass(candidate)) {
+      if (candidate.getAttribute(NATIVE_ACTIONS_ATTRIBUTE) !== "true") {
+        candidate.setAttribute(NATIVE_ACTIONS_ATTRIBUTE, "true");
+      }
+      return;
+    }
+    candidate = candidate.parentElement;
+  }
+}
+
 function isHoverOnlyControl(control: HTMLElement): boolean {
   let candidate: Element | null = control;
   for (let depth = 0; candidate && depth < 5; depth += 1) {
@@ -301,6 +354,14 @@ function collectActionTargets(): Map<HTMLElement, ActionTarget> {
   for (const contextTarget of document.querySelectorAll<HTMLElement>(
     CONTEXT_TARGET_SELECTOR,
   )) {
+    // The shared renderer wrapper also surrounds the empty application header.
+    // It is not an item and its native menu has no useful mobile actions.
+    if (
+      contextTarget.matches("[data-app-shell-application-menu-bar]") ||
+      !elementLabel(contextTarget)
+    ) {
+      continue;
+    }
     // Nested context wrappers describe the same visual item. Keep the deepest
     // owner so portal buttons never stack at identical coordinates.
     if (contextTarget.querySelector(CONTEXT_TARGET_SELECTOR)) {
@@ -309,6 +370,7 @@ function collectActionTargets(): Map<HTMLElement, ActionTarget> {
     result.set(contextTarget, {
       actions: [],
       contextTarget,
+      hasNativeControls: false,
       host: contextTarget,
     });
   }
@@ -338,14 +400,46 @@ function collectActionTargets(): Map<HTMLElement, ActionTarget> {
     const target = result.get(actionHost) ?? {
       actions: [],
       contextTarget,
+      hasNativeControls: false,
       host: actionHost,
     };
-    if (!target.actions.some((action) => action.control === control)) {
-      target.actions.push({ control, label });
+    if (!target.actions.some((action) => action.key === control)) {
+      target.actions.push({
+        activate: () => control.click(),
+        key: control,
+        label,
+      });
     }
     result.set(actionHost, target);
   }
+  for (const target of result.values()) {
+    const hasRendererMenu = target.actions.some(
+      (action) =>
+        action.key instanceof HTMLElement &&
+        action.key.getAttribute("aria-haspopup") === "menu",
+    );
+    if (!hasRendererMenu) {
+      continue;
+    }
+    // When a row already owns a renderer menu, reveal that native group in
+    // place (including adjacent primary actions such as "new chat"). Rows
+    // with only hover shortcuts keep one compact mobile action button instead
+    // of exposing destructive actions such as Archive on every list item.
+    target.hasNativeControls = true;
+    for (const action of target.actions) {
+      if (action.key instanceof HTMLElement) {
+        exposeNativeControl(action.key);
+      }
+    }
+  }
   return result;
+}
+
+function needsActionTrigger(target: ActionTarget): boolean {
+  return (
+    !target.hasNativeControls &&
+    (target.contextTarget !== null || target.actions.length > 0)
+  );
 }
 
 function isVisibleTarget(target: HTMLElement): boolean {
@@ -363,21 +457,60 @@ function isVisibleTarget(target: HTMLElement): boolean {
   );
 }
 
-function dispatchContextMenu(target: HTMLElement): void {
+function rendererMenuActions(
+  items: RendererMenuItem[],
+  select: RendererMenuSelect,
+  parents: string[] = [],
+): MobileAction[] {
+  const actions: MobileAction[] = [];
+  for (const item of items) {
+    if (item.type === "separator") {
+      continue;
+    }
+    const baseLabel = (item.nativeLabel || item.id).replace(/\s+/g, " ").trim();
+    if (!baseLabel) {
+      continue;
+    }
+    const ownLabel =
+      item.type === "checkbox" && item.checked ? `✓ ${baseLabel}` : baseLabel;
+    const path = [...parents, ownLabel];
+    if (item.submenu?.length) {
+      actions.push(...rendererMenuActions(item.submenu, select, path));
+      continue;
+    }
+    actions.push({
+      activate: () => select(item.id, items),
+      disabled: item.enabled === false,
+      key: `renderer:${path.join("/")}:${item.id}`,
+      label: path.join(" › "),
+    });
+  }
+  return actions;
+}
+
+function requestRendererActions(
+  target: HTMLElement,
+  resolve: (actions: MobileAction[]) => void,
+): void {
   if (!target.isConnected) {
     return;
   }
   const rect = target.getBoundingClientRect();
-  target.dispatchEvent(
-    new MouseEvent("contextmenu", {
-      bubbles: true,
-      button: 2,
-      cancelable: true,
-      clientX: Math.min(window.innerWidth - 16, Math.max(16, rect.right - 20)),
-      clientY: Math.min(window.innerHeight - 16, Math.max(16, rect.bottom)),
-      view: window,
-    }),
-  );
+  const event = new MouseEvent("contextmenu", {
+    bubbles: true,
+    button: 0,
+    cancelable: true,
+    clientX: Math.min(window.innerWidth - 16, Math.max(16, rect.right - 20)),
+    clientY: Math.min(window.innerHeight - 16, Math.max(16, rect.bottom)),
+    view: window,
+  }) as MobileActionRequestEvent;
+  // The semantic renderer patch recognizes this callback before its native
+  // Electron-menu path. This transfers action semantics without emulating a
+  // secondary click or exposing renderer internals globally.
+  event.codexMobileActionRequest = (items, select) => {
+    resolve(rendererMenuActions(items, select));
+  };
+  target.dispatchEvent(event);
 }
 
 function closeActionSheet(): void {
@@ -389,29 +522,25 @@ function closeActionSheet(): void {
   restoreFocus = null;
 }
 
-function appendSheetAction(
-  container: HTMLElement,
-  label: string,
-  activate: () => void,
-): void {
+function appendSheetAction(container: HTMLElement, action: MobileAction): void {
   const button = document.createElement("button");
   button.type = "button";
   button.dataset.codexMobileSheetAction = "true";
-  button.textContent = label;
+  button.disabled = action.disabled === true;
+  button.textContent = action.label;
   button.addEventListener("click", () => {
     closeActionSheet();
-    requestAnimationFrame(activate);
+    requestAnimationFrame(action.activate);
   });
   container.append(button);
 }
 
-function openActionSheet(target: ActionTarget, trigger: HTMLElement): void {
-  const contextTarget = target.contextTarget;
-  const connectedActions = target.actions.filter(
-    (action) => action.control.isConnected,
-  );
-  if (connectedActions.length === 0 && contextTarget) {
-    dispatchContextMenu(contextTarget);
+function openResolvedActionSheet(
+  target: ActionTarget,
+  trigger: HTMLElement,
+  availableActions: MobileAction[],
+): void {
+  if (availableActions.length === 0) {
     return;
   }
 
@@ -448,13 +577,8 @@ function openActionSheet(target: ActionTarget, trigger: HTMLElement): void {
   header.append(title, close);
 
   const actions = document.createElement("div");
-  for (const action of connectedActions) {
-    appendSheetAction(actions, action.label, () => action.control.click());
-  }
-  if (contextTarget) {
-    appendSheetAction(actions, copy.more, () =>
-      dispatchContextMenu(contextTarget),
-    );
+  for (const action of availableActions) {
+    appendSheetAction(actions, action);
   }
 
   sheet.append(header, actions);
@@ -465,6 +589,31 @@ function openActionSheet(target: ActionTarget, trigger: HTMLElement): void {
   document.body.append(backdrop);
   activeSheet = backdrop;
   close.focus({ preventScroll: true });
+}
+
+function openActionSheet(target: ActionTarget, trigger: HTMLElement): void {
+  const connectedActions = target.actions.filter(
+    (action) => !(action.key instanceof HTMLElement) || action.key.isConnected,
+  );
+  if (!target.contextTarget) {
+    openResolvedActionSheet(target, trigger, connectedActions);
+    return;
+  }
+
+  let resolved = false;
+  const fallbackTimer = window.setTimeout(() => {
+    if (!resolved) {
+      openResolvedActionSheet(target, trigger, connectedActions);
+    }
+  }, 300);
+  requestRendererActions(target.contextTarget, (rendererActions) => {
+    resolved = true;
+    window.clearTimeout(fallbackTimer);
+    openResolvedActionSheet(target, trigger, [
+      ...connectedActions,
+      ...rendererActions,
+    ]);
+  });
 }
 
 function createOverlay(target: ActionTarget): ActionOverlay {
@@ -485,9 +634,9 @@ function positionOverlay(overlay: ActionOverlay): void {
   const { button, target } = overlay;
   const rect = target.host.getBoundingClientRect();
   const naturalTop =
-    rect.height <= 56 ? rect.top + (rect.height - 34) / 2 : rect.top + 8;
-  const top = Math.max(4, Math.min(window.innerHeight - 38, naturalTop));
-  const left = Math.max(4, Math.min(window.innerWidth - 38, rect.right - 38));
+    rect.height <= 56 ? rect.top + (rect.height - 30) / 2 : rect.top + 6;
+  const top = Math.max(4, Math.min(window.innerHeight - 34, naturalTop));
+  const left = Math.max(4, Math.min(window.innerWidth - 34, rect.right - 34));
   button.style.left = `${left}px`;
   button.style.top = `${top}px`;
   const copy = getMessages();
@@ -514,7 +663,7 @@ function renderActionLayer(): void {
   if (targets) {
     for (const [host, overlay] of overlays) {
       const next = targets.get(host);
-      if (!next) {
+      if (!next || !needsActionTrigger(next)) {
         overlay.button.remove();
         overlays.delete(host);
       } else {
@@ -522,7 +671,7 @@ function renderActionLayer(): void {
       }
     }
     for (const [host, target] of targets) {
-      if (!overlays.has(host)) {
+      if (needsActionTrigger(target) && !overlays.has(host)) {
         overlays.set(host, createOverlay(target));
       }
     }

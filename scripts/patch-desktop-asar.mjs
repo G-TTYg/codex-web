@@ -312,6 +312,28 @@ replaceOnce(
   't[48]===P?e=t[49]:(e={"data-codex-context-target":`true`,onContextMenu:P},t[48]=P,t[49]=e)',
   "browser context-menu mobile target",
 );
+// Native Electron menus cannot render inside a browser. An explicit mobile
+// action request receives the already-localized renderer items and selection
+// callback before the native bridge is invoked, so touch UI never needs to
+// synthesize a secondary click or duplicate renderer action definitions.
+replaceOneOfOnce(
+  appInitialPath,
+  [
+    {
+      before:
+        "let t=c?await C():x();if(t.length===0)return;let n=(await window.electronBridge?.showContextMenu?.(Uyt(t)))?.id;n&&D(n,t)",
+      after:
+        "let t=c?await C():x();if(t.length===0)return;let o=e.nativeEvent?.codexMobileActionRequest??e.codexMobileActionRequest;if(typeof o==`function`){o(t,D);return}let n=(await window.electronBridge?.showContextMenu?.(Uyt(t)))?.id;n&&D(n,t)",
+    },
+    {
+      before:
+        "let t=c?await C():x();if(t.length===0)return;let n=(await window.electronBridge?.showContextMenu?.(Vyt(t)))?.id;n&&D(n,t)",
+      after:
+        "let t=c?await C():x();if(t.length===0)return;let o=e.nativeEvent?.codexMobileActionRequest??e.codexMobileActionRequest;if(typeof o==`function`){o(t,D);return}let n=(await window.electronBridge?.showContextMenu?.(Vyt(t)))?.id;n&&D(n,t)",
+    },
+  ],
+  "native context-menu mobile action bridge",
+);
 // The file tree owns a separate context menu and a separate long-press drag
 // implementation. Expose its actionable rows to the same mobile UI and remove
 // only the touch activator; mouse drag and right click remain upstream-owned.
