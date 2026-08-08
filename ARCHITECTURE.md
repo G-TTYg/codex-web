@@ -95,10 +95,11 @@ bound to the browser clipboard object. `src/browser/mobile-layout.ts` treats
 coarse-pointer media features as touch capabilities rather than relying on a
 user-agent or orientation. Explicit context-action UI follows the active input:
 iPads and phones begin in touch mode, while hybrid desktops switch on actual
-touch/pen and mouse pointer events. Input capability does not select the page
-layout. Only phone-width viewports up to 700 CSS pixels use opaque overlay
-drawers; full-size iPads retain the renderer's persistent Desktop sidebars in
-either orientation.
+touch/pen and mouse input. A captured `touchstart` remains authoritative when
+iPadOS WebKit labels its compatibility pointer sequence as mouse. Input
+capability does not select the page layout. Only phone-width viewports up to 700
+CSS pixels use opaque overlay drawers; full-size iPads retain the renderer's
+persistent Desktop sidebars in either orientation.
 The renderer's application-menu/header layout remains intact, and the browser
 layer owns outside-tap dismissal on phone layouts.
 Outside-tap dismissal observes the real underlying target after a complete

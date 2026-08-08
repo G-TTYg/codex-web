@@ -246,6 +246,14 @@ function touchInputEnabled(): boolean {
   );
 }
 
+function hasWebKitTouchInput(): boolean {
+  return (
+    navigator.maxTouchPoints > 0 &&
+    typeof CSS !== "undefined" &&
+    CSS.supports("-webkit-touch-callout", "none")
+  );
+}
+
 function dispatchContextMenu(
   target: HTMLElement,
   clientX: number,
@@ -389,10 +397,13 @@ export function installMobileInteractions(): void {
     setAttribute(MOBILE_UI_ATTRIBUTE, shouldUseMobileUI());
     setAttribute(TOUCH_CAPABILITY_ATTRIBUTE, touchCapable);
     if (!inputModeWasExplicitlySelected) {
-      // iPad/phone browsers report a coarse or non-hovering primary pointer.
-      // Hybrid desktops advertise touch through any-pointer but stay in their
-      // original mouse UI until an actual touch/pen pointerdown occurs.
-      setAttribute(TOUCH_INPUT_ATTRIBUTE, primaryTouchInputQuery.matches);
+      // iPadOS desktop-site mode can expose a fine primary pointer despite
+      // remaining a WebKit touch device. Hybrid desktops stay in their mouse
+      // UI until an actual touch/pen sequence occurs.
+      setAttribute(
+        TOUCH_INPUT_ATTRIBUTE,
+        primaryTouchInputQuery.matches || hasWebKitTouchInput(),
+      );
     }
   };
   updateMobileMode();
@@ -400,6 +411,17 @@ export function installMobileInteractions(): void {
     query.addEventListener("change", updateMobileMode);
   }
 
+  document.addEventListener(
+    "touchstart",
+    () => {
+      // iPadOS WebKit can expose a touch-capable device while reporting its
+      // compatibility pointer sequence as mouse. TouchEvent is authoritative
+      // here and restores the inline alternatives before the completed tap.
+      inputModeWasExplicitlySelected = true;
+      setAttribute(TOUCH_INPUT_ATTRIBUTE, true);
+    },
+    { capture: true, passive: true },
+  );
   document.addEventListener(
     "pointerdown",
     (event) => {
