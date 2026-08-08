@@ -87,10 +87,12 @@ The browser shim handles local browser concerns such as history mapping, mobile
 sidebar state, touch interaction fallbacks, file/workspace selection, and local
 file URLs. `src/browser/mobile-layout.ts` treats `navigator.maxTouchPoints` and
 coarse-pointer media features as touch capabilities rather than relying on a
-user-agent or orientation. Every touch-capable display receives the explicit
-touch action UI, but input capability does not select the page layout. Only
-phone-width viewports up to 700 CSS pixels use opaque overlay drawers; full-size
-iPads retain the renderer's persistent Desktop sidebars in either orientation.
+user-agent or orientation. Explicit context-action UI follows the active input:
+iPads and phones begin in touch mode, while hybrid desktops switch on actual
+touch/pen and mouse pointer events. Input capability does not select the page
+layout. Only phone-width viewports up to 700 CSS pixels use opaque overlay
+drawers; full-size iPads retain the renderer's persistent Desktop sidebars in
+either orientation.
 The renderer's application-menu/header layout remains intact, and the browser
 layer owns outside-tap dismissal on phone layouts.
 Outside-tap dismissal observes the real underlying target after a complete
@@ -100,19 +102,19 @@ first-tap operable while a drawer is open.
 instead of emulating Desktop gestures. Electron native menus cannot render in a
 browser, so the semantic patcher makes codex-web use the shared renderer's
 existing Radix context-menu branch while leaving Desktop on its native branch.
-Sidebar thread actions open the renderer's exact context-menu root. On touch
-layouts the row changes to a natural flex layout with explicit content,
-status/loading, and action ownership. The stable status rail uses only its real
-contents and disappears without reserving space when empty; the fixed action
-slot follows it, so the controls cannot overlap or shorten the row background.
+Sidebar thread actions open the renderer's exact context-menu root. While touch
+is the active input, the row changes to a natural flex layout with explicit
+content, status/loading, and action ownership. The stable status rail uses only
+its real contents and disappears without reserving space when empty; the fixed
+action slot follows it, so the controls cannot overlap or shorten the row
+background.
 Project and other renderer-owned menu controls are revealed in place. The file
 tree enables its own built-in row menu button. On touch input, the right-panel
-tab's existing
-trailing action lane exposes a dedicated options entry that opens that tab's
-original context menu, including its close and panel-placement actions. No
-browser-owned action portal, copied menu, or menu-style override is used, so
-layout, focus, localization, callbacks, and animation remain owned by the
-original renderer components.
+tab's existing trailing action lane exposes a dedicated options entry that
+opens that tab's original context menu, including its close and panel-placement
+actions. No browser-owned action portal, copied menu, or menu-style override is
+used, so layout, focus, localization, callbacks, and animation remain owned by
+the original renderer components.
 Action controls listen only for completed clicks and permit native panning, so a
 normal pointer sequence remains scrolling or the row's primary action.
 Before an inline touch action opens a context menu, the shim asks the existing

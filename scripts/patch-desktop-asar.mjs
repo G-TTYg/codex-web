@@ -443,12 +443,24 @@ replaceOneOfOnce(
   "mobile thread context-menu action",
 );
 // The file tree has its own renderer-native row action lane and menu button.
-// Enable that button directly on mobile, while retaining mouse-only dragging
-// and the existing right-click configuration on Desktop.
-replaceOnce(
+// Reveal it only while touch is the active input, retaining the original hover
+// and right-click behavior whenever a hybrid device returns to mouse input.
+replaceOneOfOnce(
   appInitialPath,
-  "Le=Ie===`both`||Ie===`button`,Re=e?.contextMenu?.buttonVisibility??`when-needed`,ze=Ie===`both`||Ie===`right-click`",
-  "Le=Ie===`both`||Ie===`button`||document.documentElement.getAttribute(`data-codex-mobile-ui`)===`true`,Re=document.documentElement.getAttribute(`data-codex-mobile-ui`)===`true`?`always`:e?.contextMenu?.buttonVisibility??`when-needed`,ze=Ie===`both`||Ie===`right-click`",
+  [
+    {
+      before:
+        "Le=Ie===`both`||Ie===`button`,Re=e?.contextMenu?.buttonVisibility??`when-needed`,ze=Ie===`both`||Ie===`right-click`",
+      after:
+        "Le=Ie===`both`||Ie===`button`||document.documentElement.getAttribute(`data-codex-touch-input`)===`true`,Re=document.documentElement.getAttribute(`data-codex-touch-input`)===`true`?`always`:e?.contextMenu?.buttonVisibility??`when-needed`,ze=Ie===`both`||Ie===`right-click`",
+    },
+    {
+      before:
+        "Le=Ie===`both`||Ie===`button`||document.documentElement.getAttribute(`data-codex-mobile-ui`)===`true`,Re=document.documentElement.getAttribute(`data-codex-mobile-ui`)===`true`?`always`:e?.contextMenu?.buttonVisibility??`when-needed`,ze=Ie===`both`||Ie===`right-click`",
+      after:
+        "Le=Ie===`both`||Ie===`button`||document.documentElement.getAttribute(`data-codex-touch-input`)===`true`,Re=document.documentElement.getAttribute(`data-codex-touch-input`)===`true`?`always`:e?.contextMenu?.buttonVisibility??`when-needed`,ze=Ie===`both`||Ie===`right-click`",
+    },
+  ],
   "file-tree mobile native menu button",
 );
 replaceOnce(

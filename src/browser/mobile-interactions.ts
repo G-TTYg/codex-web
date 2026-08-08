@@ -10,14 +10,17 @@ const TOUCH_CAPABILITY_ATTRIBUTE = "data-codex-touch-capable";
 const TOUCH_INPUT_ATTRIBUTE = "data-codex-touch-input";
 const CONTEXT_TARGET_SELECTOR = '[data-codex-context-target="true"]';
 const OPEN_MENU_SELECTOR = '[role="menu"][data-state="open"]';
+const PRIMARY_TOUCH_INPUT_QUERY = "(pointer: coarse), (hover: none)";
+const ACTIVE_TOUCH_UI_SELECTOR = `html[${MOBILE_UI_ATTRIBUTE}="true"][${TOUCH_INPUT_ATTRIBUTE}="true"]`;
 
 const MOBILE_INTERACTION_STYLES = `
-/* The thread action is renderer-owned and remains absent from Desktop layouts. */
-html:not([${MOBILE_UI_ATTRIBUTE}="true"]) .codex-mobile-context-action {
+/* Renderer-owned context alternatives are absent unless touch is the active
+   input. A hybrid device therefore keeps the upstream Desktop UI for mouse. */
+.codex-mobile-context-action {
   display: none !important;
 }
 
-html[${MOBILE_UI_ATTRIBUTE}="true"] .codex-mobile-context-action {
+${ACTIVE_TOUCH_UI_SELECTOR} .codex-mobile-context-action {
   align-items: center;
   box-sizing: border-box;
   display: inline-flex !important;
@@ -34,13 +37,13 @@ html[${MOBILE_UI_ATTRIBUTE}="true"] .codex-mobile-context-action {
 /* Touch rows give content, status/loading, and actions separate natural flex
    slots. A missing status rail contributes no width, while a present rail uses
    only its real contents; the selected row still paints the complete width. */
-html[${MOBILE_UI_ATTRIBUTE}="true"]
+${ACTIVE_TOUCH_UI_SELECTOR}
   [data-codex-row-layout]:has(.codex-mobile-context-action) {
   align-items: center;
   display: flex;
 }
 
-html[${MOBILE_UI_ATTRIBUTE}="true"]
+${ACTIVE_TOUCH_UI_SELECTOR}
   [data-codex-row-layout]:has(.codex-mobile-context-action)
   > [data-codex-row-content] {
   flex: 1 1 auto;
@@ -52,7 +55,7 @@ html[${MOBILE_UI_ATTRIBUTE}="true"]
 /* The stable status rail is absolute upstream and therefore used to share the
    action's end coordinates. Its generated semantic marker lets touch layouts
    restore natural flow without coupling this shim to fingerprinted classes. */
-html[${MOBILE_UI_ATTRIBUTE}="true"]
+${ACTIVE_TOUCH_UI_SELECTOR}
   [data-codex-row-layout]:has(.codex-mobile-context-action)
   > [data-codex-row-status-rail] {
   align-items: center !important;
@@ -70,9 +73,9 @@ html[${MOBILE_UI_ATTRIBUTE}="true"]
 
 /* The renderer action rail remains absolute for Desktop hover controls. Touch
    moves only this rail into the natural row flow and gives it one fixed lane. */
-html[${MOBILE_UI_ATTRIBUTE}="true"]
+${ACTIVE_TOUCH_UI_SELECTOR}
   :is(div, span):has(> .codex-mobile-context-action),
-html[${MOBILE_UI_ATTRIBUTE}="true"]
+${ACTIVE_TOUCH_UI_SELECTOR}
   :is(div, span):has(> .contents > .codex-mobile-context-action) {
   align-self: stretch;
   flex: 0 0 36px !important;
@@ -93,7 +96,7 @@ html[${MOBILE_UI_ATTRIBUTE}="true"]
   z-index: 1;
 }
 
-html[${MOBILE_UI_ATTRIBUTE}="true"]
+${ACTIVE_TOUCH_UI_SELECTOR}
   :is(div, span):has(> .codex-mobile-context-action)
   > :not(.codex-mobile-context-action) {
   display: none !important;
@@ -102,14 +105,14 @@ html[${MOBILE_UI_ATTRIBUTE}="true"]
 /* Tooltip slots are display:contents wrappers around each action. Hide their
    sibling slots at the rail level so pin/archive hover shortcuts cannot crowd
    the single mobile menu entry. */
-html[${MOBILE_UI_ATTRIBUTE}="true"]
+${ACTIVE_TOUCH_UI_SELECTOR}
   :is(div, span):has(> .contents > .codex-mobile-context-action) {
   opacity: 1 !important;
   pointer-events: auto !important;
   visibility: visible !important;
 }
 
-html[${MOBILE_UI_ATTRIBUTE}="true"]
+${ACTIVE_TOUCH_UI_SELECTOR}
   :is(div, span):has(> .contents > .codex-mobile-context-action)
   > .contents:not(:has(.codex-mobile-context-action)) {
   display: none !important;
@@ -118,7 +121,7 @@ html[${MOBILE_UI_ATTRIBUTE}="true"]
 /* Keep renderer-owned menu controls visible where Desktop normally reveals
    them only on hover. The inline slot also needs its non-hover width restored;
    the original component, callbacks, menu styling and animation stay intact. */
-html[${MOBILE_UI_ATTRIBUTE}="true"]
+${ACTIVE_TOUCH_UI_SELECTOR}
   :is(div, span)[class*="opacity-0"]:has([aria-haspopup="menu"]) {
   opacity: 1 !important;
   overflow: visible !important;
@@ -129,12 +132,12 @@ html[${MOBILE_UI_ATTRIBUTE}="true"]
   width: auto !important;
 }
 
-html[${MOBILE_UI_ATTRIBUTE}="true"]
+${ACTIVE_TOUCH_UI_SELECTOR}
   :is(div, span)[class*="pointer-events-none"]:has([aria-haspopup="menu"]) {
   pointer-events: auto !important;
 }
 
-html[${MOBILE_UI_ATTRIBUTE}="true"]
+${ACTIVE_TOUCH_UI_SELECTOR}
   :is(button, a, [role="button"])[aria-haspopup="menu"] {
   box-sizing: border-box;
   flex-shrink: 0;
@@ -176,13 +179,13 @@ html[${TOUCH_CAPABILITY_ATTRIBUTE}="true"] [data-file-tree-virtualized-scroll] *
   display: none !important;
 }
 
-html[${MOBILE_UI_ATTRIBUTE}="true"]
+${ACTIVE_TOUCH_UI_SELECTOR}
   aside[data-app-shell-focus-area="right-panel"]
   [data-app-shell-tab-close-button] {
   display: none !important;
 }
 
-html[${MOBILE_UI_ATTRIBUTE}="true"]
+${ACTIVE_TOUCH_UI_SELECTOR}
   aside[data-app-shell-focus-area="right-panel"]
   .codex-mobile-tab-context-action {
   align-items: center;
@@ -201,7 +204,7 @@ html[${MOBILE_UI_ATTRIBUTE}="true"]
   z-index: 31;
 }
 
-html[${MOBILE_UI_ATTRIBUTE}="true"]
+${ACTIVE_TOUCH_UI_SELECTOR}
   aside[data-app-shell-focus-area="right-panel"]
   [data-app-shell-tab-controller]:has(.codex-mobile-tab-context-action)
   button[role="tab"] {
@@ -374,9 +377,11 @@ export function installMobileInteractions(): void {
   const electronShim = (shimWindow.__ELECTRON_SHIM__ ??= {});
   electronShim.openContextMenuFromButton = openContextMenuFromButton;
 
+  const primaryTouchInputQuery = matchMedia(PRIMARY_TOUCH_INPUT_QUERY);
   const capabilityQueries = [
     matchMedia(PHONE_LAYOUT_VIEWPORT_QUERY),
     matchMedia(TOUCH_CAPABILITY_QUERY),
+    primaryTouchInputQuery,
   ];
   let inputModeWasExplicitlySelected = false;
   const updateMobileMode = (): void => {
@@ -384,7 +389,10 @@ export function installMobileInteractions(): void {
     setAttribute(MOBILE_UI_ATTRIBUTE, shouldUseMobileUI());
     setAttribute(TOUCH_CAPABILITY_ATTRIBUTE, touchCapable);
     if (!inputModeWasExplicitlySelected) {
-      setAttribute(TOUCH_INPUT_ATTRIBUTE, touchCapable);
+      // iPad/phone browsers report a coarse or non-hovering primary pointer.
+      // Hybrid desktops advertise touch through any-pointer but stay in their
+      // original mouse UI until an actual touch/pen pointerdown occurs.
+      setAttribute(TOUCH_INPUT_ATTRIBUTE, primaryTouchInputQuery.matches);
     }
   };
   updateMobileMode();
