@@ -246,6 +246,12 @@ insertAfterOnce(
   'src="./assets/preload.js"',
   "webview preload",
 );
+replaceOnce(
+  indexHtmlPath,
+  '<meta name="viewport" content="width=device-width, initial-scale=1.0" />',
+  '<meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />',
+  "software-keyboard viewport policy",
+);
 insertAfterOnce(
   indexHtmlPath,
   "    <title>Codex</title>",
@@ -304,6 +310,84 @@ replaceOnce(
   "d=!a&&window.electronBridge?.showContextMenu!=null",
   "d=!a&&window.electronBridge?.showContextMenu!=null&&!window.__ELECTRON_SHIM__",
   "browser renderer context-menu branch",
+);
+// Workspace-file and diff menus resolve their native open targets
+// asynchronously. Electron awaits that data before displaying its OS menu;
+// keep the browser's original Radix menu controlled and closed until the same
+// renderer loader completes instead of letting an empty first render vanish.
+replaceOneOfOnce(
+  appInitialPath,
+  [
+    {
+      before: "let[m,h]=Yyt.useState(p),g;",
+      after:
+        "let[m,h]=Yyt.useState(p),[codexWebMenuOpen,codexWebSetMenuOpen]=Yyt.useState(!1),g;",
+    },
+    {
+      before: "let[m,h]=qyt.useState(p),g;",
+      after:
+        "let[m,h]=qyt.useState(p),[codexWebMenuOpen,codexWebSetMenuOpen]=qyt.useState(!1),g;",
+    },
+  ],
+  "browser async context-menu open state",
+);
+replaceOneOfOnce(
+  appInitialPath,
+  [
+    {
+      before: "function Jg(e){let t=(0,Jyt.c)(83),",
+      after: "function Jg(e){let t=(0,Jyt.c)(87),",
+    },
+    {
+      before: "function Jg(e){let t=(0,Jyt.c)(84),",
+      after: "function Jg(e){let t=(0,Jyt.c)(87),",
+    },
+    {
+      before: "function Xg(e){let t=(0,Kyt.c)(83),",
+      after: "function Xg(e){let t=(0,Kyt.c)(87),",
+    },
+    {
+      before: "function Xg(e){let t=(0,Kyt.c)(84),",
+      after: "function Xg(e){let t=(0,Kyt.c)(87),",
+    },
+  ],
+  "browser async context-menu compiler cache size",
+);
+replaceOnce(
+  appInitialPath,
+  "t[63]===x?W=t[64]:(W=e=>{e&&x()},t[63]=x,t[64]=W)",
+  "W=e=>{let t=window.__ELECTRON_SHIM__?.setRendererContextMenuOpen;if(t){t(e,c,C,x,codexWebSetMenuOpen);return}e&&x()}",
+  "browser async context-menu open coordinator",
+);
+replaceOnce(
+  appInitialPath,
+  "if(t[50]!==x||t[51]!==m||t[52]!==I||t[53]!==u){",
+  "if(t[50]!==x||t[51]!==m||t[52]!==I||t[53]!==u||t[84]!==c||t[85]!==C||t[86]!==codexWebSetMenuOpen){",
+  "browser async context-menu callback cache dependencies",
+);
+replaceOnce(
+  appInitialPath,
+  "t[60]=U,t[61]=W,t[62]=G}else",
+  "t[60]=U,t[61]=W,t[62]=G,t[84]=c,t[85]=C,t[86]=codexWebSetMenuOpen}else",
+  "browser async context-menu callback cache values",
+);
+replaceOnce(
+  appInitialPath,
+  "onOpenChange:W,children:[G,ee]",
+  "open:window.__ELECTRON_SHIM__?.setRendererContextMenuOpen?codexWebMenuOpen:void 0,onOpenChange:W,children:[G,ee]",
+  "browser controlled async context menu",
+);
+replaceOnce(
+  appInitialPath,
+  "return t[78]!==z||t[79]!==W||t[80]!==G||t[81]!==ee?(te=",
+  "return t[78]!==z||t[79]!==W||t[80]!==G||t[81]!==ee||t[82]!==codexWebMenuOpen?(te=",
+  "browser controlled async context-menu cache dependency",
+);
+replaceOnce(
+  appInitialPath,
+  "t[78]=z,t[79]=W,t[80]=G,t[81]=ee,t[82]=te):te=t[82],te}",
+  "t[78]=z,t[79]=W,t[80]=G,t[81]=ee,t[82]=codexWebMenuOpen,t[83]=te):te=t[83],te}",
+  "browser controlled async context-menu cache value",
 );
 // The browser layout must close the real right-panel atom rather than locating
 // a localized toolbar button by aria-label. Expose that renderer-owned action

@@ -132,6 +132,11 @@ animation frame before dispatching the new target's context event. Touch menu
 switching therefore preserves native focus and exit animation without stacking
 portals. Permanent touch actions occupy explicit natural-flow or renderer-owned
 trailing slots so their hit targets cannot cover status, row, or tab content.
+Workspace-file and diff menus can load their native open targets asynchronously.
+The browser shim coordinates the renderer's controlled Radix roots so the menu
+opens only after those original items resolve; a newer desktop right-click or
+touch action supersedes any older pending request instead of showing an empty or
+stale menu.
 
 The shared semantic patch exposes the renderer-owned right-panel close action
 and its open state to the browser shim. Mobile CSS keeps the animated panel
@@ -144,7 +149,12 @@ every non-mouse pointer without consuming its event. HTML drag starts are also
 cancelled while touch is the active input. Hardware mouse right click and mouse
 drag remain Desktop-owned on hybrid devices.
 Mobile search surfaces remain mounted when software-keyboard dismissal blurs
-their input. The server shim
+their input. Composer and other text-editing sessions also track the Visual
+Viewport on touch devices. Browsers that support the viewport
+`interactive-widget` policy resize page content for the software keyboard;
+after WebKit expands the viewport, the fallback clears only residual document
+root offsets while preserving renderer-owned conversation/editor scroll
+positions. The server shim
 owns privileged host behavior such as filesystem access and launching the
 Codex app-server. Terminal creation remains in the official Desktop shell and
 resolves the project-owned `node-pty` installation through Node's normal module

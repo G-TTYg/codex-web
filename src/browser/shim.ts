@@ -12,7 +12,12 @@ import {
 } from "./workspace-root-dialog";
 import { installMobileLayout, shouldUseMobileLayout } from "./mobile-layout";
 import { installMobileInteractions } from "./mobile-interactions";
+import { installMobileKeyboardViewport } from "./mobile-keyboard";
 import { installClipboardCompatibility } from "./clipboard";
+import {
+  createRendererContextMenuCoordinator,
+  type SetRendererContextMenuOpen,
+} from "./context-menu";
 
 type IpcListener = (event: unknown, ...args: unknown[]) => void;
 
@@ -116,6 +121,7 @@ type ElectronShimState = {
   closeSidebar?: () => void;
   closeRightPanel?: () => void;
   openContextMenuFromButton?: (button: HTMLElement) => void;
+  setRendererContextMenuOpen?: SetRendererContextMenuOpen;
   onMemoryNavigationChanged?: (navigation: MemoryNavigationChange) => void;
   overrideAdapter?: {
     getGateOverride?: (
@@ -375,10 +381,13 @@ const electronShim = (window.__ELECTRON_SHIM__ ??= {});
 const buildFlavor: "prod" | "dev" | "agent" | string = "prod";
 
 installClipboardCompatibility();
+electronShim.setRendererContextMenuOpen =
+  createRendererContextMenuCoordinator();
 installMobileLayout(
   () => electronShim.closeSidebar?.(),
   () => electronShim.closeRightPanel?.(),
 );
+installMobileKeyboardViewport();
 installMobileInteractions();
 
 if (typeof globalThis.crypto.randomUUID !== "function") {
