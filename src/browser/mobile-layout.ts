@@ -1,53 +1,104 @@
 /**
- * Owns narrow-viewport layout behavior that the Desktop renderer does not
- * provide. Keep selectors semantic: the renderer's fingerprinted classes
- * change between Desktop releases, while app-shell data attributes do not.
+ * Owns touch-capable and narrow-viewport layout behavior that the Desktop
+ * renderer does not provide. Keep selectors semantic: the renderer's
+ * fingerprinted classes change between Desktop releases, while app-shell data
+ * attributes do not.
  */
 
-// Desktop device emulation and iPad browsers must select the same layout from
-// capabilities, not user-agent strings. Modern portrait iPads exceed 768 CSS
-// pixels but still have a coarse primary pointer and no hover input.
-export const MOBILE_VIEWPORT_QUERY =
-  "(max-width: 768px), (hover: none) and (pointer: coarse) and (max-width: 1024px) and (orientation: portrait)";
+export const NARROW_VIEWPORT_QUERY = "(max-width: 768px)";
+export const TOUCH_LAYOUT_VIEWPORT_QUERY = "(max-width: 1366px)";
+export const TOUCH_CAPABILITY_QUERY =
+  "(any-pointer: coarse), (pointer: coarse), (hover: none)";
+
+const MOBILE_LAYOUT_ATTRIBUTE = "data-codex-mobile-layout";
+const MOBILE_UI_ATTRIBUTE = "data-codex-mobile-ui";
+const MOBILE_LAYOUT_SELECTOR = `html[${MOBILE_LAYOUT_ATTRIBUTE}="true"]`;
 
 const MOBILE_LAYOUT_STYLES = `
-@media ${MOBILE_VIEWPORT_QUERY} {
-  aside.app-shell-left-panel {
-    position: absolute !important;
-    inset: 0 auto 0 0;
-    z-index: 40;
-    isolation: isolate;
-    background:
-      linear-gradient(
-        var(--color-background-surface-under, Canvas),
-        var(--color-background-surface-under, Canvas)
-      ),
-      Canvas;
-    box-shadow: 12px 0 28px rgb(0 0 0 / 28%);
-  }
+${MOBILE_LAYOUT_SELECTOR},
+${MOBILE_LAYOUT_SELECTOR} body {
+  max-width: 100%;
+  overflow-x: hidden !important;
+  overflow-x: clip !important;
+  overscroll-behavior-x: none;
+}
 
-  aside.app-shell-left-panel[style*="width: 0px"] {
-    box-shadow: none;
-  }
+${MOBILE_LAYOUT_SELECTOR} aside.app-shell-left-panel {
+  position: absolute !important;
+  inset: 0 auto 0 0;
+  z-index: 40;
+  isolation: isolate;
+  background:
+    linear-gradient(
+      var(--color-background-surface-under, Canvas),
+      var(--color-background-surface-under, Canvas)
+    ),
+    Canvas;
+  box-shadow: 12px 0 28px rgb(0 0 0 / 28%);
+}
 
-  aside[data-app-shell-focus-area="right-panel"] {
-    position: absolute !important;
-    inset: 0 0 0 auto;
-    z-index: 41;
-    max-width: min(86vw, 320px);
-    isolation: isolate;
-    background:
-      linear-gradient(
-        var(--color-background-surface, Canvas),
-        var(--color-background-surface, Canvas)
-      ),
-      Canvas;
-    box-shadow: -12px 0 28px rgb(0 0 0 / 28%);
-  }
+${MOBILE_LAYOUT_SELECTOR} aside.app-shell-left-panel[style*="width: 0px"] {
+  pointer-events: none !important;
+  box-shadow: none;
+}
 
-  main[data-app-shell-main-surface] {
-    width: 100% !important;
-  }
+${MOBILE_LAYOUT_SELECTOR} aside[data-app-shell-focus-area="right-panel"] {
+  position: absolute !important;
+  inset: 0 0 0 auto;
+  z-index: 41;
+  max-width: min(86vw, 600px);
+  overflow: hidden !important;
+  isolation: isolate;
+  overscroll-behavior: contain;
+  background:
+    linear-gradient(
+      var(--color-background-surface, Canvas),
+      var(--color-background-surface, Canvas)
+    ),
+    Canvas;
+  box-shadow: -12px 0 28px rgb(0 0 0 / 28%);
+}
+
+${MOBILE_LAYOUT_SELECTOR}
+  aside[data-app-shell-focus-area="right-panel"][data-codex-panel-open="false"] {
+  pointer-events: none !important;
+  box-shadow: none;
+}
+
+/* The renderer keeps the panel's persisted Desktop width on its inner motion
+   surface. Clamp that surface to the drawer so it cannot widen the document
+   and leave mobile Safari horizontally offset after the close animation. */
+${MOBILE_LAYOUT_SELECTOR}
+  [data-codex-right-panel-surface] {
+  inset-inline: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+/* A resize handle has no useful meaning on an overlay drawer and its
+   pointer-capturing touch-none surface conflicts with native panning. */
+${MOBILE_LAYOUT_SELECTOR}
+  aside[data-app-shell-focus-area="right-panel"]
+  > [role="separator"] {
+  display: none !important;
+}
+
+${MOBILE_LAYOUT_SELECTOR} main[data-app-shell-main-surface] {
+  flex-basis: 100% !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+/* Upstream full-width panel mode collapses this viewport to width: 0. A
+   drawer is always an overlay, so the underlying page must remain full-size. */
+${MOBILE_LAYOUT_SELECTOR}
+  [data-app-shell-main-content-layout][data-app-shell-right-panel-full-width] {
+  flex: 1 1 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  width: 100% !important;
 }
 `;
 
@@ -57,7 +108,33 @@ const LEFT_PANEL_SELECTOR = "aside.app-shell-left-panel";
 const RIGHT_PANEL_SELECTOR = 'aside[data-app-shell-focus-area="right-panel"]';
 const PERSISTENT_MOBILE_SEARCH_SELECTOR =
   '[data-file-tree-search-input], [cmdk-input], [role="searchbox"], input[type="search"]';
-const TOUCH_INPUT_SELECTOR = 'html[data-codex-touch-input="true"]';
+
+export function hasTouchInputCapability(): boolean {
+  return (
+    navigator.maxTouchPoints > 0 || matchMedia(TOUCH_CAPABILITY_QUERY).matches
+  );
+}
+
+export function shouldUseMobileLayout(): boolean {
+  return (
+    matchMedia(NARROW_VIEWPORT_QUERY).matches ||
+    (hasTouchInputCapability() &&
+      matchMedia(TOUCH_LAYOUT_VIEWPORT_QUERY).matches)
+  );
+}
+
+export function shouldUseMobileUI(): boolean {
+  return shouldUseMobileLayout() || hasTouchInputCapability();
+}
+
+function setBooleanAttribute(name: string, enabled: boolean): void {
+  document.documentElement.setAttribute(name, enabled ? "true" : "false");
+}
+
+function updateMobileLayoutMode(): void {
+  setBooleanAttribute(MOBILE_LAYOUT_ATTRIBUTE, shouldUseMobileLayout());
+  setBooleanAttribute(MOBILE_UI_ATTRIBUTE, shouldUseMobileUI());
+}
 
 function installMobileLayoutStyles(): void {
   if (document.querySelector("style[data-codex-mobile-layout]")) {
@@ -70,20 +147,31 @@ function installMobileLayoutStyles(): void {
   (document.head ?? document.documentElement).append(style);
 }
 
-export function installMobileLayout(closeSidebar: () => void): void {
+export function installMobileLayout(
+  closeLeftSidebar: () => void,
+  closeRightPanel: () => void,
+): void {
   if (installed) {
     return;
   }
   installed = true;
 
+  // Set capability attributes before the renderer mounts so iPadOS does not
+  // briefly bootstrap the Desktop sidebar state and then reflow into drawers.
+  updateMobileLayoutMode();
   installMobileLayoutStyles();
-  const mobileMediaQuery = matchMedia(MOBILE_VIEWPORT_QUERY);
+
+  const layoutQueries = [
+    matchMedia(NARROW_VIEWPORT_QUERY),
+    matchMedia(TOUCH_LAYOUT_VIEWPORT_QUERY),
+    matchMedia(TOUCH_CAPABILITY_QUERY),
+  ];
+  for (const query of layoutQueries) {
+    query.addEventListener("change", updateMobileLayoutMode);
+  }
 
   const retainMobileSearch = (event: FocusEvent): void => {
-    if (
-      !mobileMediaQuery.matches &&
-      !document.documentElement.matches(TOUCH_INPUT_SELECTOR)
-    ) {
+    if (!shouldUseMobileUI()) {
       return;
     }
 
@@ -107,7 +195,7 @@ export function installMobileLayout(closeSidebar: () => void): void {
   document.addEventListener(
     "click",
     (event) => {
-      if (!mobileMediaQuery.matches) {
+      if (!shouldUseMobileLayout()) {
         return;
       }
 
@@ -125,7 +213,7 @@ export function installMobileLayout(closeSidebar: () => void): void {
       }
 
       // Menus and dialogs are portalled outside the sidebar and must keep
-      // receiving their first pointer event even when they overlap the scrim.
+      // receiving their first pointer event even when they overlap the drawer.
       if (
         target.closest(
           '[role="menu"], [role="dialog"], [data-radix-popper-content-wrapper]',
@@ -137,7 +225,15 @@ export function installMobileLayout(closeSidebar: () => void): void {
       const panels = [
         document.querySelector<HTMLElement>(RIGHT_PANEL_SELECTOR),
         document.querySelector<HTMLElement>(LEFT_PANEL_SELECTOR),
-      ].filter((panel): panel is HTMLElement => panel !== null);
+      ].filter((panel): panel is HTMLElement => {
+        if (panel === null) {
+          return false;
+        }
+        return (
+          !panel.matches(RIGHT_PANEL_SELECTOR) ||
+          panel.dataset.codexPanelOpen !== "false"
+        );
+      });
       const pointIsOutside = (candidate: HTMLElement): boolean => {
         const rect = candidate.getBoundingClientRect();
         if (rect.width <= 1) {
@@ -169,13 +265,9 @@ export function installMobileLayout(closeSidebar: () => void): void {
       // drawer on pointerdown changes the hit-tested layout before pointerup,
       // which can suppress the first link or button activation on touch.
       if (panel.matches(RIGHT_PANEL_SELECTOR)) {
-        document
-          .querySelector<HTMLButtonElement>(
-            'button[aria-label="Toggle side panel"][aria-pressed="true"]',
-          )
-          ?.click();
+        closeRightPanel();
       } else {
-        closeSidebar();
+        closeLeftSidebar();
       }
     },
     true,

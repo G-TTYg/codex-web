@@ -10,7 +10,7 @@ import {
   openSelectWorkspaceRootDialog,
   type WorkspaceDirectoryEntries,
 } from "./workspace-root-dialog";
-import { installMobileLayout, MOBILE_VIEWPORT_QUERY } from "./mobile-layout";
+import { installMobileLayout, shouldUseMobileLayout } from "./mobile-layout";
 import { installMobileInteractions } from "./mobile-interactions";
 
 type IpcListener = (event: unknown, ...args: unknown[]) => void;
@@ -113,6 +113,7 @@ type ElectronShimState = {
   initialRoute?: string;
   initialSidebarState?: boolean;
   closeSidebar?: () => void;
+  closeRightPanel?: () => void;
   openContextMenuFromButton?: (button: HTMLElement) => void;
   onMemoryNavigationChanged?: (navigation: MemoryNavigationChange) => void;
   overrideAdapter?: {
@@ -368,12 +369,14 @@ function requestWorkspaceDirectoryEntries(
 }
 
 const themeMediaQuery = matchMedia("(prefers-color-scheme: dark)");
-const mobileMediaQuery = matchMedia(MOBILE_VIEWPORT_QUERY);
-const initialSidebarState = !mobileMediaQuery.matches;
+const initialSidebarState = !shouldUseMobileLayout();
 const electronShim = (window.__ELECTRON_SHIM__ ??= {});
 const buildFlavor: "prod" | "dev" | "agent" | string = "prod";
 
-installMobileLayout(() => electronShim.closeSidebar?.());
+installMobileLayout(
+  () => electronShim.closeSidebar?.(),
+  () => electronShim.closeRightPanel?.(),
+);
 installMobileInteractions();
 
 if (typeof globalThis.crypto.randomUUID !== "function") {
@@ -441,7 +444,7 @@ electronShim.onMemoryNavigationChanged = (navigation) => {
   const path = navigation.location.pathname;
   if (
     navigation.action !== "POP" &&
-    mobileMediaQuery.matches &&
+    shouldUseMobileLayout() &&
     shouldCloseSidebarForMemoryPath(path)
   ) {
     electronShim.closeSidebar?.();

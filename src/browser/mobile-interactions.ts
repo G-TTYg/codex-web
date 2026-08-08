@@ -1,6 +1,13 @@
-import { MOBILE_VIEWPORT_QUERY } from "./mobile-layout";
+import {
+  hasTouchInputCapability,
+  NARROW_VIEWPORT_QUERY,
+  shouldUseMobileUI,
+  TOUCH_CAPABILITY_QUERY,
+  TOUCH_LAYOUT_VIEWPORT_QUERY,
+} from "./mobile-layout";
 
 const MOBILE_UI_ATTRIBUTE = "data-codex-mobile-ui";
+const TOUCH_CAPABILITY_ATTRIBUTE = "data-codex-touch-capable";
 const TOUCH_INPUT_ATTRIBUTE = "data-codex-touch-input";
 const CONTEXT_TARGET_SELECTOR = '[data-codex-context-target="true"]';
 
@@ -72,16 +79,18 @@ html[${MOBILE_UI_ATTRIBUTE}="true"]
   touch-action: pan-y !important;
 }
 
-/* A touch sequence on a draggable row remains native vertical panning. */
-html[${TOUCH_INPUT_ATTRIBUTE}="true"] [draggable="true"] {
+/* A touch sequence on a draggable row remains native vertical panning. These
+   styles follow capability, while drag cancellation follows the active input,
+   so a hardware mouse on a hybrid display retains Desktop dragging. */
+html[${TOUCH_CAPABILITY_ATTRIBUTE}="true"] [draggable="true"] {
   -webkit-touch-callout: none;
   -webkit-user-drag: none !important;
   touch-action: pan-y pinch-zoom;
   user-select: none;
 }
 
-html[${TOUCH_INPUT_ATTRIBUTE}="true"] [data-app-action-sidebar-scroll],
-html[${TOUCH_INPUT_ATTRIBUTE}="true"] [data-file-tree-virtualized-scroll] {
+html[${TOUCH_CAPABILITY_ATTRIBUTE}="true"] [data-app-action-sidebar-scroll],
+html[${TOUCH_CAPABILITY_ATTRIBUTE}="true"] [data-file-tree-virtualized-scroll] {
   -webkit-overflow-scrolling: touch;
   min-height: 0;
   overflow-y: auto !important;
@@ -89,10 +98,45 @@ html[${TOUCH_INPUT_ATTRIBUTE}="true"] [data-file-tree-virtualized-scroll] {
   touch-action: pan-y pinch-zoom !important;
 }
 
-html[${TOUCH_INPUT_ATTRIBUTE}="true"] [data-app-action-sidebar-scroll] *,
-html[${TOUCH_INPUT_ATTRIBUTE}="true"] [data-file-tree-virtualized-scroll] * {
+html[${TOUCH_CAPABILITY_ATTRIBUTE}="true"] [data-app-action-sidebar-scroll] *,
+html[${TOUCH_CAPABILITY_ATTRIBUTE}="true"] [data-file-tree-virtualized-scroll] * {
   -webkit-user-drag: none !important;
   touch-action: pan-y pinch-zoom !important;
+}
+
+/* Right-panel tab menus are normally secondary-click-only. The renderer adds a
+   dedicated inline touch action that opens the original Radix context menu. */
+.codex-mobile-tab-context-action {
+  display: none !important;
+}
+
+html[${MOBILE_UI_ATTRIBUTE}="true"]
+  aside[data-app-shell-focus-area="right-panel"]
+  [data-app-shell-tab-close-button] {
+  display: none !important;
+}
+
+html[${MOBILE_UI_ATTRIBUTE}="true"]
+  aside[data-app-shell-focus-area="right-panel"]
+  .codex-mobile-tab-context-action {
+  align-items: center;
+  color: var(--color-token-text-tertiary);
+  display: inline-flex !important;
+  inset-block: 0;
+  inset-inline-end: 1px;
+  justify-content: center;
+  min-height: 28px;
+  min-width: 28px;
+  position: absolute;
+  touch-action: pan-x !important;
+  z-index: 31;
+}
+
+html[${MOBILE_UI_ATTRIBUTE}="true"]
+  aside[data-app-shell-focus-area="right-panel"]
+  [data-app-shell-tab-controller]:has(.codex-mobile-tab-context-action)
+  button[role="tab"] {
+  padding-inline-end: 22px;
 }
 `;
 
@@ -133,6 +177,9 @@ function openContextMenuFromButton(button: HTMLElement): void {
   // fallback dispatch target for the same React/Radix handler.
   const target =
     button.closest<HTMLElement>(CONTEXT_TARGET_SELECTOR) ??
+    button
+      .closest<HTMLElement>("[data-app-shell-tab-controller]")
+      ?.querySelector<HTMLElement>(CONTEXT_TARGET_SELECTOR) ??
     button.parentElement?.closest<HTMLElement>(
       '[role="button"], [role="treeitem"], [data-thread-title-trigger]',
     );
@@ -182,18 +229,32 @@ export function installMobileInteractions(): void {
   const electronShim = (shimWindow.__ELECTRON_SHIM__ ??= {});
   electronShim.openContextMenuFromButton = openContextMenuFromButton;
 
-  const mobileMediaQuery = matchMedia(MOBILE_VIEWPORT_QUERY);
-  const coarsePointerQuery = matchMedia("(hover: none), (pointer: coarse)");
+  const capabilityQueries = [
+    matchMedia(NARROW_VIEWPORT_QUERY),
+    matchMedia(TOUCH_LAYOUT_VIEWPORT_QUERY),
+    matchMedia(TOUCH_CAPABILITY_QUERY),
+  ];
+  let inputModeWasExplicitlySelected = false;
   const updateMobileMode = (): void => {
-    setAttribute(MOBILE_UI_ATTRIBUTE, mobileMediaQuery.matches);
-    if (coarsePointerQuery.matches) {
-      setAttribute(TOUCH_INPUT_ATTRIBUTE, true);
+    const touchCapable = hasTouchInputCapability();
+    setAttribute(MOBILE_UI_ATTRIBUTE, shouldUseMobileUI());
+    setAttribute(TOUCH_CAPABILITY_ATTRIBUTE, touchCapable);
+    if (!inputModeWasExplicitlySelected) {
+      setAttribute(TOUCH_INPUT_ATTRIBUTE, touchCapable);
     }
   };
   updateMobileMode();
-  mobileMediaQuery.addEventListener("change", updateMobileMode);
-  coarsePointerQuery.addEventListener("change", updateMobileMode);
+  for (const query of capabilityQueries) {
+    query.addEventListener("change", updateMobileMode);
+  }
 
-  document.addEventListener("pointerdown", onPointerDown, true);
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      inputModeWasExplicitlySelected = true;
+      onPointerDown(event);
+    },
+    true,
+  );
   document.addEventListener("dragstart", onDragStart, true);
 }

@@ -76,12 +76,14 @@ subagents and newer Desktop protocol paths continue to work.
 
 The browser shim handles local browser concerns such as history mapping, mobile
 sidebar state, touch interaction fallbacks, file/workspace selection, and local
-file URLs. On narrow viewports and portrait touch tablets up to 1024 CSS pixels,
-`src/browser/mobile-layout.ts` turns the Desktop left and right sidebars into
-opaque overlay drawers, preserves the renderer's application-menu/header
-layout, and owns outside-tap dismissal. Capability-based media queries keep
-desktop Edge device emulation and iPad browsers on the same layout path without
-changing ordinary mouse-driven tablet-width windows.
+file URLs. `src/browser/mobile-layout.ts` treats `navigator.maxTouchPoints` and
+coarse-pointer media features as touch capabilities rather than relying on a
+user-agent or orientation. Every touch-capable display receives the explicit
+touch action UI; narrow viewports and touch displays up to 1366 CSS pixels use
+opaque overlay drawers. This covers portrait and landscape iPads, including the
+largest iPad Pro viewport, while an ordinary wide mouse-only window retains the
+Desktop layout. The renderer's application-menu/header layout remains intact,
+and the browser layer owns outside-tap dismissal.
 Outside-tap dismissal observes the real underlying target after a complete
 click and does not consume its pointer sequence, so links and controls remain
 first-tap operable while a drawer is open.
@@ -92,11 +94,19 @@ existing Radix context-menu branch while leaving Desktop on its native branch.
 Sidebar thread actions live in the renderer's existing trailing action rail and
 open that exact context-menu root; project and other renderer-owned menu
 controls are revealed in place. The file tree enables its own built-in row menu
-button. No browser-owned action portal, copied menu, or menu-style override is
-used, so layout, focus, localization, callbacks, and animation remain owned by
-the original renderer components. Action controls listen only for completed
-clicks and permit `pan-y`, so a normal pointer sequence remains native scrolling
-or the row's primary action.
+button. On touch input, the right-panel tab's existing trailing action lane
+exposes a dedicated options entry that opens that tab's original context menu,
+including its close and panel-placement actions. No browser-owned action portal,
+copied menu, or menu-style override is used, so layout, focus, localization,
+callbacks, and animation remain owned by the original renderer components.
+Action controls listen only for completed clicks and permit native panning, so a
+normal pointer sequence remains scrolling or the row's primary action.
+
+The shared semantic patch exposes the renderer-owned right-panel close action
+and its open state to the browser shim. Mobile CSS keeps the animated panel
+out of normal layout, clamps its persisted Desktop inner width to the drawer,
+and disables the closed panel's pointer surface. Closing the drawer therefore
+cannot leave Safari on a horizontally widened or offset document.
 The shared semantic patcher removes Radix touch long-press menus, disables the
 file tree's custom touch-drag activator, and makes dnd-kit's PointerSensor reject
 every non-mouse pointer without consuming its event. HTML drag starts are also

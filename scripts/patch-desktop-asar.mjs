@@ -305,6 +305,39 @@ replaceOnce(
   "d=!a&&window.electronBridge?.showContextMenu!=null&&!window.__ELECTRON_SHIM__",
   "browser renderer context-menu branch",
 );
+// The browser layout must close the real right-panel atom rather than locating
+// a localized toolbar button by aria-label. Expose that renderer-owned action
+// and the declarative open state used to isolate the closing drawer animation.
+replaceOneOfOnce(
+  appInitialPath,
+  [
+    {
+      before:
+        "function k3r({children:e,isRightPanelOpen:t,mainContentWidth:n,rightPanelDefaultWidth:r,rightPanelWidth:i,rightPanelWidthRatio:a,widthMode:o}){let s=Oo(Jw),",
+      after:
+        "function k3r({children:e,isRightPanelOpen:t,mainContentWidth:n,rightPanelDefaultWidth:r,rightPanelWidth:i,rightPanelWidthRatio:a,widthMode:o}){let s=Oo(Jw);window.__ELECTRON_SHIM__&&(window.__ELECTRON_SHIM__.closeRightPanel=()=>rT(s,!1));let ",
+    },
+    {
+      before:
+        "function D3r({children:e,isRightPanelOpen:t,mainContentWidth:n,rightPanelDefaultWidth:r,rightPanelWidth:i,rightPanelWidthRatio:a,widthMode:o}){let s=Ao(Kw),",
+      after:
+        "function D3r({children:e,isRightPanelOpen:t,mainContentWidth:n,rightPanelDefaultWidth:r,rightPanelWidth:i,rightPanelWidthRatio:a,widthMode:o}){let s=Ao(Kw);window.__ELECTRON_SHIM__&&(window.__ELECTRON_SHIM__.closeRightPanel=()=>tT(s,!1));let ",
+    },
+  ],
+  "browser right-panel close bridge",
+);
+replaceOnce(
+  appInitialPath,
+  '"data-app-shell-focus-area":`right-panel`,className:',
+  '"data-app-shell-focus-area":`right-panel`,"data-codex-panel-open":t,className:',
+  "browser right-panel open state",
+);
+replaceOnce(
+  appInitialPath,
+  "style:{minWidth:v,width:v}",
+  '"data-codex-right-panel-surface":!0,style:{minWidth:v,width:v}',
+  "browser right-panel surface marker",
+);
 // Mark only the active Radix trigger. A renderer-owned inline button can then
 // open that exact context-menu root without copying its items or callbacks.
 replaceOnce(
@@ -312,6 +345,24 @@ replaceOnce(
   "t[48]===P?e=t[49]:(e={onContextMenu:P},t[48]=P,t[49]=e)",
   't[48]===P?e=t[49]:(e={"data-codex-context-target":`true`,onContextMenu:P},t[48]=P,t[49]=e)',
   "browser context-menu trigger target",
+);
+// App-shell tabs expose close, close-others, placement, and tab-specific
+// commands only through their context menu. Add one renderer-owned inline
+// touch entry to the existing tab component and open that exact Radix root.
+replaceOnce(
+  appInitialPath,
+  "children:[Se,ze,Be]",
+  'children:[Se,ze,(0,Ek.jsx)(`button`,{type:`button`,"aria-haspopup":`menu`,"aria-label":P.formatMessage({id:`codex.tabs.contextMenu.more`,defaultMessage:`Tab options`,description:`Opens the tab context menu from its inline touch action`}),className:`codex-mobile-tab-context-action`,onClick:e=>{e.stopPropagation(),window.__ELECTRON_SHIM__?.openContextMenuFromButton?.(e.currentTarget)},onPointerDown:CMr,children:(0,Ek.jsxs)(`svg`,{"aria-hidden":!0,className:`icon-xs`,viewBox:`0 0 21 21`,children:[(0,Ek.jsx)(`circle`,{cx:4.7,cy:10.5,r:1.5,fill:`currentColor`}),(0,Ek.jsx)(`circle`,{cx:10.2,cy:10.5,r:1.5,fill:`currentColor`}),(0,Ek.jsx)(`circle`,{cx:15.7,cy:10.5,r:1.5,fill:`currentColor`})]})}),Be]',
+  "mobile right-panel tab context-menu action",
+);
+// The alternate app-shell tab implementation is selected by a renderer gate.
+// Keep the same inline action in both branches so capability detection does not
+// depend on remote experiment state.
+replaceOnce(
+  appInitialPath,
+  "children:[re,he,ge]",
+  'children:[re,he,(0,Pk.jsx)(`button`,{type:`button`,"aria-haspopup":`menu`,"aria-label":M.formatMessage({id:`codex.tabs.contextMenu.more`,defaultMessage:`Tab options`,description:`Opens the tab context menu from its inline touch action`}),className:`codex-mobile-tab-context-action`,onClick:e=>{e.stopPropagation(),window.__ELECTRON_SHIM__?.openContextMenuFromButton?.(e.currentTarget)},onPointerDown:KNr,children:(0,Pk.jsxs)(`svg`,{"aria-hidden":!0,className:`icon-xs`,viewBox:`0 0 21 21`,children:[(0,Pk.jsx)(`circle`,{cx:4.7,cy:10.5,r:1.5,fill:`currentColor`}),(0,Pk.jsx)(`circle`,{cx:10.2,cy:10.5,r:1.5,fill:`currentColor`}),(0,Pk.jsx)(`circle`,{cx:15.7,cy:10.5,r:1.5,fill:`currentColor`})]})}),ge]',
+  "mobile alternate right-panel tab context-menu action",
 );
 // Sidebar thread rows already own a trailing action rail. Add one mobile-only
 // entry to that rail and forward the completed click event through the existing
