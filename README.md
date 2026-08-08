@@ -143,10 +143,28 @@ found. the same server command also supports a custom host and port:
 npm run server -- --host 0.0.0.0 --port 9000
 ```
 
+an optional shared-password gate can protect every page, host-file response,
+upload, and WebSocket connection. set the password in the server environment;
+it is never embedded in the browser bundle:
+
+```bash
+CODEX_WEB_AUTH_PASSWORD='replace-with-a-strong-password' \
+  npm run server -- --prefer-tailscale
+```
+
+```powershell
+$env:CODEX_WEB_AUTH_PASSWORD = 'replace-with-a-strong-password'
+npm run server -- --prefer-tailscale
+```
+
+the login dialog exchanges the password for an HttpOnly, SameSite=Strict
+session cookie. sessions expire when the browser session ends or the server is
+restarted. leaving `CODEX_WEB_AUTH_PASSWORD` unset preserves the unauthenticated
+local-development behavior.
+
 binding `0.0.0.0` exposes the server on every host interface, including LAN,
-Tailscale, and potentially public interfaces. it does not provide access
-control. prefer a specific Tailnet address, or protect the server with firewall
-rules and an authenticated reverse proxy.
+Tailscale, and potentially public interfaces. prefer a specific Tailnet
+address, the built-in password gate, or an authenticated reverse proxy.
 
 ### proxying to app-server (advanced usage)
 
@@ -180,13 +198,17 @@ rather than opening an interactive prompt.
 
 ## security
 
-run `codex-web` only on trusted networks. treat anyone who can reach the
-`codex-web` server as someone who can operate codex on the host machine as the
-same user running the server.
+run `codex-web` only on trusted networks. unless the password gate or an
+external authentication gateway is enabled, treat anyone who can reach the
+server as someone who can operate Codex on the host machine as the same user
+running the server.
 
-if you need authn or authz, implement it outside of `codex-web`: proxy it through
-wireguard, tailscale, or an ssh tunnel and put an authentication gateway or
-reverse proxy in front.
+the built-in gate is intentionally a single-user shared-password check, not
+multi-user authorization. use an external identity-aware proxy when individual
+accounts, revocation, audit logs, or role-based access are required. ordinary
+HTTP does not add transport encryption; use a Tailnet, HTTPS reverse proxy, or
+SSH tunnel so the password and session cookie are not sent across an untrusted
+network in plaintext.
 
 someone with access to the web UI may be able to:
 

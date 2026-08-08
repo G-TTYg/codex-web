@@ -74,6 +74,15 @@ loads the official Desktop main bundle after installing the module alias in
 `src/server/electron/`. The existing MessagePort/app-host forwarding is kept so
 subagents and newer Desktop protocol paths continue to work.
 
+`src/server/auth.ts` owns the optional shared-password boundary enabled by
+`CODEX_WEB_AUTH_PASSWORD`. A Fastify request hook protects the renderer,
+host-file route, uploads, and other HTTP handlers, while the raw server upgrade
+handler independently validates the same random HttpOnly session before
+accepting the IPC WebSocket. Login credentials are constant-time compared and
+never enter renderer JavaScript. The server removes the password from its
+environment before the Desktop shell can start Codex subprocesses. The
+in-memory session intentionally becomes invalid when the server restarts.
+
 The browser shim handles local browser concerns such as history mapping, mobile
 sidebar state, touch interaction fallbacks, file/workspace selection, and local
 file URLs. `src/browser/mobile-layout.ts` treats `navigator.maxTouchPoints` and
@@ -91,22 +100,25 @@ first-tap operable while a drawer is open.
 instead of emulating Desktop gestures. Electron native menus cannot render in a
 browser, so the semantic patcher makes codex-web use the shared renderer's
 existing Radix context-menu branch while leaving Desktop on its native branch.
-Sidebar thread actions live in the renderer's existing trailing action rail and
-open that exact context-menu root; project and other renderer-owned menu
-controls are revealed in place. The file tree enables its own built-in row menu
-button. On touch input, the right-panel tab's existing trailing action lane
-exposes a dedicated options entry that opens that tab's original context menu,
-including its close and panel-placement actions. No browser-owned action portal,
-copied menu, or menu-style override is used, so layout, focus, localization,
-callbacks, and animation remain owned by the original renderer components.
+Sidebar thread actions open the renderer's exact context-menu root. On touch
+layouts the row changes to a natural flex layout: its renderer-owned status and
+loading content remains first, followed by a separate fixed action slot, so the
+two controls cannot overlap or shorten the row background. Project and other
+renderer-owned menu controls are revealed in place. The file tree enables its
+own built-in row menu button. On touch input, the right-panel tab's existing
+trailing action lane exposes a dedicated options entry that opens that tab's
+original context menu, including its close and panel-placement actions. No
+browser-owned action portal, copied menu, or menu-style override is used, so
+layout, focus, localization, callbacks, and animation remain owned by the
+original renderer components.
 Action controls listen only for completed clicks and permit native panning, so a
 normal pointer sequence remains scrolling or the row's primary action.
 Before an inline touch action opens a context menu, the shim asks the existing
 Radix layer to dismiss any open menu with its native Escape path and waits one
 animation frame before dispatching the new target's context event. Touch menu
 switching therefore preserves native focus and exit animation without stacking
-portals. Permanent touch actions reserve the renderer's existing trailing lanes
-so their hit targets cannot cover row or tab text.
+portals. Permanent touch actions occupy explicit natural-flow or renderer-owned
+trailing slots so their hit targets cannot cover status, row, or tab content.
 
 The shared semantic patch exposes the renderer-owned right-panel close action
 and its open state to the browser shim. Mobile CSS keeps the animated panel

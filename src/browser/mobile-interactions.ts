@@ -31,23 +31,46 @@ html[${MOBILE_UI_ATTRIBUTE}="true"] .codex-mobile-context-action {
   touch-action: pan-y !important;
 }
 
-/* The upstream rail is absolutely positioned. Reserve only the title's final
-   36px for its single touch action; padding the row itself makes flex layouts
-   shrink the selected background and wastes an empty strip at the sidebar. */
+/* Touch rows use a real trailing flex slot. Status/loading nodes remain in the
+   renderer's content flow, followed by a separate 36px action lane; neither
+   control can cover the other and the selected row still paints full width. */
 html[${MOBILE_UI_ATTRIBUTE}="true"]
-  :is([role="button"], [role="treeitem"]):has(.codex-mobile-context-action)
-  [data-thread-title-trigger] {
-  box-sizing: border-box;
-  padding-inline-end: 36px !important;
+  [data-codex-row-layout]:has(.codex-mobile-context-action) {
+  align-items: center;
+  display: flex;
 }
 
-/* Thread actions use the renderer's existing trailing rail. On touch layouts
-   the context entry replaces hover-only shortcuts rather than covering them. */
 html[${MOBILE_UI_ATTRIBUTE}="true"]
-  :is(div, span):has(> .codex-mobile-context-action) {
+  [data-codex-row-layout]:has(.codex-mobile-context-action)
+  > [data-codex-row-content] {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto !important;
+}
+
+/* The renderer action rail remains absolute for Desktop hover controls. Touch
+   moves only this rail into the natural row flow and gives it one fixed lane. */
+html[${MOBILE_UI_ATTRIBUTE}="true"]
+  :is(div, span):has(> .codex-mobile-context-action),
+html[${MOBILE_UI_ATTRIBUTE}="true"]
+  :is(div, span):has(> .contents > .codex-mobile-context-action) {
+  align-self: stretch;
+  flex: 0 0 36px !important;
+  gap: 0 !important;
+  height: auto !important;
+  inset: auto !important;
+  justify-content: flex-end !important;
+  margin: 0 !important;
+  max-width: 36px !important;
+  min-width: 36px !important;
   opacity: 1 !important;
+  order: 1;
+  padding: 0 !important;
   pointer-events: auto !important;
+  position: static !important;
   visibility: visible !important;
+  width: 36px !important;
+  z-index: 1;
 }
 
 html[${MOBILE_UI_ATTRIBUTE}="true"]

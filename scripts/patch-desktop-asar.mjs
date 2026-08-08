@@ -346,6 +346,21 @@ replaceOnce(
   't[48]===P?e=t[49]:(e={"data-codex-context-target":`true`,onContextMenu:P},t[48]=P,t[49]=e)',
   "browser context-menu trigger target",
 );
+// Mark the row and its content surface so the touch stylesheet can move the
+// renderer-owned action rail into a natural trailing flex slot. Desktop keeps
+// the upstream absolute hover rail; no status/loading node is relocated.
+replaceOnce(
+  appInitialPath,
+  "className:`flex h-full w-full items-center text-sm leading-4`,children:[Rn,zn,Bn]",
+  '"data-codex-row-content":!0,className:`flex h-full w-full items-center text-sm leading-4`,children:[Rn,zn,Bn]',
+  "browser row content marker",
+);
+replaceOnce(
+  appInitialPath,
+  'className:Qt,"data-title-aligned-trailing-rail":gn,onClick:Bt',
+  'className:Qt,"data-codex-row-layout":!0,"data-title-aligned-trailing-rail":gn,onClick:Bt',
+  "browser row layout marker",
+);
 // App-shell tabs expose close, close-others, placement, and tab-specific
 // commands only through their context menu. Add one renderer-owned inline
 // touch entry to the existing tab component and open that exact Radix root.

@@ -129,7 +129,10 @@ Then verify:
   Louder with Codex Micro support, and validates native and `cua_node` assets;
 - every semantic transform reported success with no skipped assertion;
 - browser and server builds completed;
-- the server starts and `/` plus the WebSocket endpoint are reachable;
+- the server starts and `/` plus the WebSocket endpoint are reachable; when
+  `CODEX_WEB_AUTH_PASSWORD` is enabled, unauthenticated HTTP and WebSocket
+  requests are rejected, a correct login sets the HttpOnly session cookie, and
+  that cookie authorizes both renderer assets and IPC;
 - existing and new tasks render;
 - prompt prefill and browser navigation work;
 - phone-width (through 700 CSS pixels) left and right overlay drawers, persistent
@@ -140,8 +143,9 @@ Then verify:
   composer, keyboard-dismiss-safe search, explicit renderer-owned inline row
   and right-panel tab menu buttons, original Radix context menus with their
   unchanged positioning and animation, switching inline menu targets dismisses
-  the previous menu first, touch action lanes do not overlap native controls or
-  text, absence of browser-owned floating action portals or copied action sheets,
+  the previous menu first, the thread action occupies a natural tail slot and
+  does not overlap loading/status controls or text, absence of browser-owned
+  floating action portals or copied action sheets,
   first-tap links beneath an open drawer,
   external-link fallback,
   native Projects/file-tree scrolling from nested row controls, absence of

@@ -16,6 +16,7 @@ import Fastify from "fastify";
 import fastifyMultipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import { installModuleAliasHook } from "./module";
+import { createPasswordAuth } from "./auth";
 import { glob } from "glob";
 
 type ServerOptions = {
@@ -378,6 +379,13 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
   const app = Fastify({ logger: false });
   const websocketServer = new WebSocketServer({ noServer: true });
   const sockets = new Set<WebSocket>();
+  const authPassword = process.env.CODEX_WEB_AUTH_PASSWORD;
+  // The Desktop shell starts Codex after the HTTP boundary is ready. Remove the
+  // credential before then so agent subprocesses cannot inherit the login secret.
+  delete process.env.CODEX_WEB_AUTH_PASSWORD;
+  const passwordAuth = createPasswordAuth(authPassword);
+
+  passwordAuth.install(app);
 
   await app.register(fastifyMultipart, {
     limits: {
@@ -447,6 +455,10 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
     const url = new URL(requestUrl, `http://${host}`);
     if (url.pathname !== "/__backend/ipc") {
       socket.destroy();
+      return;
+    }
+    if (!passwordAuth.isAuthorized(request.headers)) {
+      passwordAuth.rejectUpgrade(socket);
       return;
     }
 
@@ -619,6 +631,9 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
 
   await app.listen({ host: options.host, port: options.port });
   console.log(`IPC bridge listening at ws://${options.host}:${options.port}`);
+  console.log(
+    `Password authentication ${passwordAuth.enabled ? "enabled" : "disabled"}`,
+  );
 
   const packageJson = JSON.parse(
     await fs.readFile(
