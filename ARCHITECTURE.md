@@ -85,7 +85,13 @@ in-memory session intentionally becomes invalid when the server restarts.
 
 The browser shim handles local browser concerns such as history mapping, mobile
 sidebar state, touch interaction fallbacks, file/workspace selection, and local
-file URLs. `src/browser/mobile-layout.ts` treats `navigator.maxTouchPoints` and
+file URLs. `src/browser/clipboard.ts` installs a native-first Clipboard API
+facade for the upstream renderer. When an HTTP origin does not expose
+`navigator.clipboard` or a write is rejected, text copies fall back to a
+temporary selected textarea and `document.execCommand("copy")`; focus and the
+original selection are restored afterward, while native read methods remain
+bound to the browser clipboard object. `src/browser/mobile-layout.ts` treats
+`navigator.maxTouchPoints` and
 coarse-pointer media features as touch capabilities rather than relying on a
 user-agent or orientation. Explicit context-action UI follows the active input:
 iPads and phones begin in touch mode, while hybrid desktops switch on actual

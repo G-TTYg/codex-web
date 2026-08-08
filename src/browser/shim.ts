@@ -12,6 +12,7 @@ import {
 } from "./workspace-root-dialog";
 import { installMobileLayout, shouldUseMobileLayout } from "./mobile-layout";
 import { installMobileInteractions } from "./mobile-interactions";
+import { installClipboardCompatibility } from "./clipboard";
 
 type IpcListener = (event: unknown, ...args: unknown[]) => void;
 
@@ -373,6 +374,7 @@ const initialSidebarState = !shouldUseMobileLayout();
 const electronShim = (window.__ELECTRON_SHIM__ ??= {});
 const buildFlavor: "prod" | "dev" | "agent" | string = "prod";
 
+installClipboardCompatibility();
 installMobileLayout(
   () => electronShim.closeSidebar?.(),
   () => electronShim.closeRightPanel?.(),
