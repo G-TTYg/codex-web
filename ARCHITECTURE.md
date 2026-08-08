@@ -121,7 +121,9 @@ tab's existing trailing action lane exposes a dedicated options entry that
 opens that tab's original context menu, including its close and panel-placement
 actions. No browser-owned action portal, copied menu, or menu-style override is
 used, so layout, focus, localization, callbacks, and animation remain owned by
-the original renderer components.
+the original renderer components. Left-sidebar and right-sidebar alternatives
+share the single `data-codex-touch-input="true"` visibility contract; neither
+side adds a separate viewport, layout, or capability condition.
 Action controls listen only for completed clicks and permit native panning, so a
 normal pointer sequence remains scrolling or the row's primary action.
 Before an inline touch action opens a context menu, the shim asks the existing

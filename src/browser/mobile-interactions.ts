@@ -11,7 +11,9 @@ const TOUCH_INPUT_ATTRIBUTE = "data-codex-touch-input";
 const CONTEXT_TARGET_SELECTOR = '[data-codex-context-target="true"]';
 const OPEN_MENU_SELECTOR = '[role="menu"][data-state="open"]';
 const PRIMARY_TOUCH_INPUT_QUERY = "(pointer: coarse), (hover: none)";
-const ACTIVE_TOUCH_UI_SELECTOR = `html[${MOBILE_UI_ATTRIBUTE}="true"][${TOUCH_INPUT_ATTRIBUTE}="true"]`;
+// Renderer-owned alternatives in both sidebars consume this one contract. Do
+// not add layout/capability gates to one side: active input owns visibility.
+const ACTIVE_TOUCH_UI_SELECTOR = `html[${TOUCH_INPUT_ATTRIBUTE}="true"]`;
 
 const MOBILE_INTERACTION_STYLES = `
 /* Renderer-owned context alternatives are absent unless touch is the active
