@@ -1,10 +1,12 @@
 /**
  * Stabilizes the browser app shell around software-keyboard transitions.
  *
- * Mobile WebKit can keep the layout viewport scrolled after its visual
- * viewport expands again, even when the focused composer remains mounted.
- * Only the document root is normalized here; renderer-owned conversation and
- * editor scrollers retain their positions.
+ * The Desktop renderer sizes body and #root to 100vh. Software keyboards only
+ * shrink the Visual Viewport on mobile WebKit, so the composer otherwise stays
+ * at the bottom of the obscured Desktop-height shell. While a keyboard is
+ * confirmed open, pin the whole app shell to the Visual Viewport. On close,
+ * normalize only the document root; renderer-owned conversation and editor
+ * scrollers retain their positions.
  */
 
 import { hasTouchInputCapability } from "./mobile-layout";
@@ -29,17 +31,48 @@ const EDITABLE_SELECTOR = [
   'input[type="url"]',
   'input[type="week"]',
 ].join(", ");
-const TOUCH_INPUT_ATTRIBUTE = "data-codex-touch-input";
 const KEYBOARD_ATTRIBUTE = "data-codex-software-keyboard";
+const KEYBOARD_HEIGHT_PROPERTY = "--codex-keyboard-viewport-height";
+const KEYBOARD_LEFT_PROPERTY = "--codex-keyboard-viewport-left";
+const KEYBOARD_TOP_PROPERTY = "--codex-keyboard-viewport-top";
+const KEYBOARD_WIDTH_PROPERTY = "--codex-keyboard-viewport-width";
 const KEYBOARD_HEIGHT_THRESHOLD_PX = 80;
 const VIEWPORT_WIDTH_EPSILON_PX = 2;
 const RESTORE_DELAY_MS = 160;
+
+const KEYBOARD_VIEWPORT_STYLES = `
+html[${KEYBOARD_ATTRIBUTE}="true"] {
+  overflow: hidden !important;
+}
+
+html[${KEYBOARD_ATTRIBUTE}="true"] body {
+  position: fixed !important;
+  inset: auto !important;
+  top: var(${KEYBOARD_TOP_PROPERTY}, 0px) !important;
+  left: var(${KEYBOARD_LEFT_PROPERTY}, 0px) !important;
+  width: var(${KEYBOARD_WIDTH_PROPERTY}, 100%) !important;
+  height: var(${KEYBOARD_HEIGHT_PROPERTY}, 100%) !important;
+  min-height: 0 !important;
+  max-height: var(${KEYBOARD_HEIGHT_PROPERTY}, 100%) !important;
+  overflow: hidden !important;
+}
+
+html[${KEYBOARD_ATTRIBUTE}="true"] #root {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+}
+`;
 
 let installed = false;
 
 type ViewportSize = {
   height: number;
   layoutWidth: number;
+  left: number;
+  top: number;
+  width: number;
 };
 
 function viewportSize(): ViewportSize {
@@ -50,7 +83,37 @@ function viewportSize(): ViewportSize {
     // animating. The layout viewport changes only for rotation, split view, or
     // a real window resize, which are the baseline changes relevant here.
     layoutWidth: window.innerWidth,
+    left: viewport?.offsetLeft ?? 0,
+    top: viewport?.offsetTop ?? 0,
+    width: viewport?.width ?? window.innerWidth,
   };
+}
+
+function installKeyboardViewportStyles(): void {
+  if (document.querySelector("style[data-codex-mobile-keyboard]")) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.dataset.codexMobileKeyboard = "true";
+  style.textContent = KEYBOARD_VIEWPORT_STYLES;
+  (document.head ?? document.documentElement).append(style);
+}
+
+function setKeyboardViewport(viewport: ViewportSize): void {
+  const root = document.documentElement;
+  root.style.setProperty(KEYBOARD_HEIGHT_PROPERTY, `${viewport.height}px`);
+  root.style.setProperty(KEYBOARD_LEFT_PROPERTY, `${viewport.left}px`);
+  root.style.setProperty(KEYBOARD_TOP_PROPERTY, `${viewport.top}px`);
+  root.style.setProperty(KEYBOARD_WIDTH_PROPERTY, `${viewport.width}px`);
+}
+
+function clearKeyboardViewport(): void {
+  const root = document.documentElement;
+  root.style.removeProperty(KEYBOARD_HEIGHT_PROPERTY);
+  root.style.removeProperty(KEYBOARD_LEFT_PROPERTY);
+  root.style.removeProperty(KEYBOARD_TOP_PROPERTY);
+  root.style.removeProperty(KEYBOARD_WIDTH_PROPERTY);
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -72,11 +135,11 @@ function isEditableTarget(target: EventTarget | null): boolean {
   );
 }
 
-function touchKeyboardEnabled(): boolean {
-  return (
-    hasTouchInputCapability() &&
-    document.documentElement.getAttribute(TOUCH_INPUT_ATTRIBUTE) === "true"
-  );
+function keyboardViewportEnabled(): boolean {
+  // Keyboard geometry follows device capability, not the most recent pointer.
+  // An iPad trackpad click or a hybrid laptop mouse can still summon the same
+  // software keyboard after focus reaches an editable surface.
+  return hasTouchInputCapability();
 }
 
 function resetRootScroll(): void {
@@ -102,6 +165,7 @@ export function installMobileKeyboardViewport(): void {
     return;
   }
   installed = true;
+  installKeyboardViewportStyles();
 
   let baseline = viewportSize();
   let minimumSessionHeight = baseline.height;
@@ -162,9 +226,10 @@ export function installMobileKeyboardViewport(): void {
           if (generation !== restoreGeneration || !keyboardWasOpen) {
             return;
           }
-          resetRootScroll();
           keyboardWasOpen = false;
           setKeyboardOpen(false);
+          clearKeyboardViewport();
+          resetRootScroll();
           baseline = viewportSize();
           minimumSessionHeight = baseline.height;
           editorSessionActive = isEditableTarget(document.activeElement);
@@ -174,11 +239,16 @@ export function installMobileKeyboardViewport(): void {
   };
 
   const handleViewportChange = (): void => {
-    if (!touchKeyboardEnabled()) {
+    if (!keyboardViewportEnabled()) {
       return;
     }
 
     const current = viewportSize();
+    if (keyboardWasOpen) {
+      // Visual Viewport scroll events continue while WebKit pans the focused
+      // editor. Keep the fixed shell aligned with every animation step.
+      setKeyboardViewport(current);
+    }
     if (
       Math.abs(current.layoutWidth - baseline.layoutWidth) >
       VIEWPORT_WIDTH_EPSILON_PX
@@ -204,6 +274,7 @@ export function installMobileKeyboardViewport(): void {
     if (baseline.height - current.height >= KEYBOARD_HEIGHT_THRESHOLD_PX) {
       cancelRestore();
       keyboardWasOpen = true;
+      setKeyboardViewport(current);
       setKeyboardOpen(true);
       return;
     }
@@ -212,7 +283,9 @@ export function installMobileKeyboardViewport(): void {
       keyboardWasOpen &&
       current.height - minimumSessionHeight >= KEYBOARD_HEIGHT_THRESHOLD_PX
     ) {
-      setKeyboardOpen(false);
+      // Keep the shell pinned until WebKit has finished expanding the Visual
+      // Viewport. Removing the constraint during the close animation exposes
+      // the renderer's 100vh shell and causes the same disappearing jump.
       restoreAfterAnimation();
     }
   };
@@ -220,7 +293,7 @@ export function installMobileKeyboardViewport(): void {
   document.addEventListener(
     "focusin",
     (event) => {
-      if (!touchKeyboardEnabled() || !isEditableTarget(event.target)) {
+      if (!keyboardViewportEnabled() || !isEditableTarget(event.target)) {
         return;
       }
 
@@ -228,8 +301,12 @@ export function installMobileKeyboardViewport(): void {
       editorSessionActive = true;
       const current = viewportSize();
       if (!keyboardWasOpen) {
-        baseline = current;
-        minimumSessionHeight = current.height;
+        // Keep the last no-editor height as the keyboard baseline. WebKit may
+        // dispatch focusin after the first Visual Viewport animation step; if
+        // that already-shortened height became the baseline, the remaining
+        // animation could stay below the detection threshold forever.
+        minimumSessionHeight = Math.min(baseline.height, current.height);
+        handleViewportChange();
       }
     },
     true,
@@ -238,7 +315,7 @@ export function installMobileKeyboardViewport(): void {
   document.addEventListener(
     "focusout",
     () => {
-      if (!touchKeyboardEnabled() || !editorSessionActive) {
+      if (!keyboardViewportEnabled() || !editorSessionActive) {
         return;
       }
 

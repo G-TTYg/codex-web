@@ -151,13 +151,17 @@ drag remain Desktop-owned on hybrid devices.
 Mobile search surfaces remain mounted when software-keyboard dismissal blurs
 their input. Composer and other text-editing sessions also track the Visual
 Viewport on touch devices while retaining the browser's native interactive
-widget policy, so focusing an editor remains browser-owned. After WebKit
-expands the viewport, the fallback clears only residual document root offsets
-while preserving renderer-owned conversation/editor scroll positions. Focus
-changes alone never move the document, and a newly focused editor invalidates
-every queued recovery frame from the previous keyboard session. The server shim
-owns privileged host behavior such as filesystem access and launching the
-Codex app-server. Terminal creation remains in the official Desktop shell and
+widget policy. The extracted Desktop renderer fixes `body` and `#root` to
+`100vh`, which remains the obscured Layout Viewport height on mobile WebKit.
+Once keyboard occlusion is confirmed, the browser shim pins that complete app
+shell to the Visual Viewport's live bounds so the focused editor and its
+surrounding layout stay above the keyboard. After WebKit expands the viewport,
+the constraint is removed and the fallback clears only residual document root
+offsets while preserving renderer-owned conversation/editor scroll positions.
+Focus changes alone never move the document, and a newly focused editor
+invalidates every queued recovery frame from the previous keyboard session.
+The server shim owns privileged host behavior such as filesystem access and
+launching the Codex app-server. Terminal creation remains in the official Desktop shell and
 resolves the project-owned `node-pty` installation through Node's normal module
 lookup. Platform-specific Appx/zip discovery never enters this runtime IPC
 layer.
