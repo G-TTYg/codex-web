@@ -33,6 +33,7 @@ class FakeEventTarget {
 }
 
 class FakeStyle {
+  mutations = [];
   values = new Map();
 
   getPropertyValue(name) {
@@ -40,10 +41,14 @@ class FakeStyle {
   }
 
   removeProperty(name) {
+    if (this.values.has(name)) {
+      this.mutations.push({ name, type: "remove" });
+    }
     this.values.delete(name);
   }
 
   setProperty(name, value) {
+    this.mutations.push({ name, type: "set", value });
     this.values.set(name, value);
   }
 }
@@ -333,30 +338,17 @@ function shiftOf(region) {
   return region.style.getPropertyValue(regionShiftProperty);
 }
 
+function settle(harness, milliseconds = 240) {
+  harness.clock.advanceWithoutFrame(milliseconds);
+}
+
+async function settleFocusTurn() {
+  await Promise.resolve();
+}
+
 test("mobile keyboard viewport coordinator", async (suite) => {
-  await suite.test("leaves top command search on native geometry", async () => {
-    const harness = await createHarness();
-    const input = harness.input([commandSearchSelector]);
-    const styleText = harness.document.head.children[0]?.textContent ?? "";
-
-    harness.focus(input);
-    Object.assign(harness.viewport, { height: 450, offsetTop: 32 });
-    harness.viewportChanged();
-
-    assert.equal(harness.root.getAttribute(sessionAttribute), "true");
-    assert.equal(
-      harness.root.getAttribute(activeSurfaceAttribute),
-      "command-search",
-    );
-    assert.equal(input.getAttribute(activeRegionAttribute), null);
-    assert.equal(harness.root.style.values.size, 0);
-    assert.equal(harness.document.body.style.values.size, 0);
-    assert.match(styleText, /data-codex-keyboard-region/);
-    assert.doesNotMatch(styleText, /\bbody\b|#root/);
-  });
-
   await suite.test(
-    "samples WebKit animation and lifts only the center region",
+    "does not move the focused composer during an opening resize storm",
     async () => {
       const harness = await createHarness();
       const composer = harness.input([composerSelector], {
@@ -364,62 +356,195 @@ test("mobile keyboard viewport coordinator", async (suite) => {
         top: 680,
       });
       const center = harness.region(mainRegionSelector, composer);
-      const left = new FakeElement();
-      const right = new FakeElement();
+      const styleText = harness.document.head.children[0]?.textContent ?? "";
 
       harness.focus(composer);
-      Object.assign(harness.viewport, { height: 460, offsetTop: 48 });
-      harness.clock.runFrame();
+      for (const [height, top] of [
+        [700, 0],
+        [610, 18],
+        [520, 36],
+        [450, 48],
+      ]) {
+        Object.assign(harness.viewport, { height, offsetTop: top });
+        harness.viewportChanged();
+        settle(harness, 100);
+        assert.equal(shiftOf(center), "");
+      }
 
-      assert.equal(shiftOf(center), "-260px");
+      settle(harness, 139);
+      assert.equal(shiftOf(center), "");
+      settle(harness, 1);
+      assert.equal(shiftOf(center), "-270px");
       assert.equal(center.getAttribute(activeRegionAttribute), "active");
-      assert.equal(left.getAttribute(activeRegionAttribute), null);
-      assert.equal(right.getAttribute(activeRegionAttribute), null);
-      assert.equal(harness.root.style.values.size, 0);
-      assert.equal(harness.document.body.style.values.size, 0);
       assert.equal(harness.root.getAttribute(keyboardAttribute), "true");
+      assert.equal(harness.root.getAttribute(sessionAttribute), "true");
+      assert.equal(center.style.mutations.length, 1);
+      assert.match(styleText, /transition: none/);
+      assert.doesNotMatch(styleText, /will-change|\bbody\b|#root/);
     },
   );
 
   await suite.test(
-    "aligns the center region bottom with the software keyboard",
+    "freezes one correction instead of following Visual Viewport pan noise",
     async () => {
       const harness = await createHarness();
       const composer = harness.input([composerSelector]);
       const center = harness.region(mainRegionSelector, composer);
       harness.focus(composer);
-
-      harness.viewport.height = 600;
-      harness.viewportChanged();
-      assert.equal(shiftOf(center), "-168px");
-
       harness.viewport.height = 450;
       harness.viewportChanged();
+      settle(harness);
+
       assert.equal(shiftOf(center), "-318px");
-      assert.equal(768 + Number.parseFloat(shiftOf(center)), 450);
+      assert.equal(center.style.mutations.length, 1);
+
+      for (const top of [24, 72, 100, 64]) {
+        harness.viewport.offsetTop = top;
+        harness.viewportChanged("scroll");
+        settle(harness);
+      }
+
+      assert.equal(shiftOf(center), "-318px");
+      assert.equal(center.style.mutations.length, 1);
+      assert.equal(harness.clock.animationFrames.size, 0);
     },
   );
 
   await suite.test(
-    "does not double-apply WebKit Visual Viewport panning",
+    "does not mistake keyboard accessory resizing for keyboard close",
     async () => {
       const harness = await createHarness();
       const composer = harness.input([composerSelector]);
       const center = harness.region(mainRegionSelector, composer);
       harness.focus(composer);
-      Object.assign(harness.viewport, { height: 450, offsetTop: 100 });
-      harness.viewportChanged("scroll");
+      harness.viewport.height = 450;
+      harness.viewportChanged();
+      settle(harness);
 
-      assert.equal(shiftOf(center), "-218px");
+      harness.viewport.height = 540;
+      harness.viewportChanged();
+      settle(harness);
+
+      assert.equal(harness.root.getAttribute(keyboardAttribute), "true");
+      assert.equal(shiftOf(center), "-318px");
+      assert.equal(center.style.mutations.length, 1);
+    },
+  );
+
+  await suite.test(
+    "clears a closed keyboard without writing document scroll state",
+    async () => {
+      const harness = await createHarness();
+      const composer = harness.input([composerSelector]);
+      const center = harness.region(mainRegionSelector, composer);
+      harness.document.documentElement.scrollTop = 41;
+      harness.document.body.scrollTop = 23;
+      harness.focus(composer);
+      harness.viewport.height = 450;
+      harness.viewportChanged();
+      settle(harness);
+
+      for (const height of [520, 640, 768]) {
+        harness.viewport.height = height;
+        harness.viewportChanged();
+        settle(harness, 100);
+        assert.equal(shiftOf(center), "-318px");
+      }
+      settle(harness);
+
+      assert.equal(shiftOf(center), "");
+      assert.equal(center.getAttribute(activeRegionAttribute), null);
+      assert.equal(harness.root.getAttribute(keyboardAttribute), "false");
+      assert.equal(harness.root.getAttribute(sessionAttribute), "true");
+      assert.deepEqual(harness.scrollCalls, []);
+      assert.equal(harness.document.documentElement.scrollTop, 41);
+      assert.equal(harness.document.body.scrollTop, 23);
+    },
+  );
+
+  await suite.test(
+    "keeps a close-reopen race in one stable open transaction",
+    async () => {
+      const harness = await createHarness();
+      const composer = harness.input([composerSelector]);
+      const center = harness.region(mainRegionSelector, composer);
+      harness.focus(composer);
+      harness.viewport.height = 450;
+      harness.viewportChanged();
+      settle(harness);
+
+      harness.viewport.height = 768;
+      harness.viewportChanged();
+      settle(harness, 120);
+      harness.viewport.height = 450;
+      harness.viewportChanged();
+      settle(harness);
+
+      assert.equal(harness.root.getAttribute(keyboardAttribute), "true");
+      assert.equal(shiftOf(center), "-318px");
+      assert.equal(center.style.mutations.length, 1);
+      assert.deepEqual(harness.scrollCalls, []);
+    },
+  );
+
+  await suite.test(
+    "rearms a still-focused composer after keyboard dismissal",
+    async () => {
+      const harness = await createHarness();
+      const composer = harness.input([composerSelector]);
+      const center = harness.region(mainRegionSelector, composer);
+      harness.focus(composer);
+      harness.viewport.height = 450;
+      harness.viewportChanged();
+      settle(harness);
+
+      harness.viewport.height = 768;
+      harness.viewportChanged();
+      settle(harness);
+      assert.equal(shiftOf(center), "");
+
+      harness.viewport.height = 440;
+      harness.viewportChanged();
+      settle(harness);
+      assert.equal(harness.root.getAttribute(keyboardAttribute), "true");
+      assert.equal(shiftOf(center), "-328px");
       assert.equal(
-        768 + Number.parseFloat(shiftOf(center)),
-        harness.viewport.offsetTop + harness.viewport.height,
+        center.style.mutations.filter(({ type }) => type === "set").length,
+        2,
       );
     },
   );
 
   await suite.test(
-    "keeps file-tree and visible text-file searches stationary",
+    "switches owners only after the new focus geometry settles",
+    async () => {
+      const harness = await createHarness();
+      const composer = harness.input([composerSelector]);
+      const center = harness.region(mainRegionSelector, composer);
+      harness.focus(composer);
+      harness.viewport.height = 450;
+      harness.viewportChanged();
+      settle(harness);
+
+      const editor = harness.input([], { bottom: 650, top: 600 });
+      const right = harness.region(rightRegionSelector, editor);
+      harness.focus(editor);
+      assert.equal(shiftOf(center), "-318px");
+      assert.equal(shiftOf(right), "");
+
+      settle(harness);
+      assert.equal(center.getAttribute(activeRegionAttribute), null);
+      assert.equal(shiftOf(center), "");
+      assert.equal(shiftOf(right), "-200px");
+      assert.equal(
+        harness.root.getAttribute(activeSurfaceAttribute),
+        "right-sidebar-editor",
+      );
+    },
+  );
+
+  await suite.test(
+    "leaves top searches native and exposes only occluded regional editors",
     async () => {
       const fileHarness = await createHarness();
       const fileSearch = fileHarness.input([fileTreeSearchSelector], {
@@ -430,229 +555,154 @@ test("mobile keyboard viewport coordinator", async (suite) => {
       fileHarness.focus(fileSearch);
       fileHarness.viewport.height = 450;
       fileHarness.viewportChanged();
+      settle(fileHarness);
+      assert.equal(shiftOf(left), "");
       assert.equal(
         fileHarness.root.getAttribute(activeSurfaceAttribute),
         "file-tree-search",
       );
-      assert.equal(left.getAttribute(activeRegionAttribute), null);
-      assert.equal(shiftOf(left), "");
 
-      const textHarness = await createHarness();
-      const textSearch = textHarness.input([textFileSearchSelector], {
-        bottom: 90,
-        top: 50,
-      });
-      const center = textHarness.region(mainRegionSelector, textSearch);
-      textHarness.focus(textSearch);
-      textHarness.viewport.height = 450;
-      textHarness.viewportChanged();
+      const commandHarness = await createHarness();
+      const commandSearch = commandHarness.input([commandSearchSelector]);
+      commandHarness.focus(commandSearch);
+      commandHarness.viewport.height = 450;
+      commandHarness.viewportChanged();
+      settle(commandHarness);
       assert.equal(
-        textHarness.root.getAttribute(activeSurfaceAttribute),
-        "text-file-search",
+        commandHarness.root.getAttribute(activeSurfaceAttribute),
+        "command-search",
       );
-      assert.equal(shiftOf(center), "0px");
+      assert.equal(commandSearch.getAttribute(activeRegionAttribute), null);
+
+      const editorHarness = await createHarness();
+      const editor = editorHarness.input([], { bottom: 520, top: 470 });
+      const center = editorHarness.region(mainRegionSelector, editor);
+      editorHarness.focus(editor);
+      editorHarness.viewport.height = 450;
+      editorHarness.viewportChanged();
+      settle(editorHarness);
+      assert.equal(shiftOf(center), "-70px");
+      assert.equal(editor.getBoundingClientRect().bottom, 450);
     },
   );
 
   await suite.test(
-    "moves a middle editor only enough to reveal that input",
+    "retains the pre-focus baseline when WebKit resizes first",
     async () => {
       const harness = await createHarness();
-      const input = harness.input([], { bottom: 520, top: 470 });
-      const center = harness.region(mainRegionSelector, input);
-      harness.focus(input);
       harness.viewport.height = 450;
       harness.viewportChanged();
-
-      assert.equal(
-        harness.root.getAttribute(activeSurfaceAttribute),
-        "main-editor",
-      );
-      assert.equal(shiftOf(center), "-70px");
-      assert.equal(input.getBoundingClientRect().bottom, 450);
-    },
-  );
-
-  await suite.test(
-    "moves only the dialog or sidebar that owns an occluded editor",
-    async () => {
-      const cases = [
-        [dialogRegionSelector, "dialog-editor"],
-        [leftRegionSelector, "left-sidebar-editor"],
-        [rightRegionSelector, "right-sidebar-editor"],
-      ];
-      for (const [selector, expectedSurface] of cases) {
-        const harness = await createHarness();
-        const input = harness.input([], { bottom: 650, top: 600 });
-        const owner = harness.region(selector, input);
-        Object.assign(harness.viewport, { height: 500, offsetTop: 24 });
-        harness.focus(input);
-
-        assert.equal(
-          harness.root.getAttribute(activeSurfaceAttribute),
-          expectedSurface,
-        );
-        assert.equal(shiftOf(owner), "-126px");
-        assert.equal(input.getBoundingClientRect().bottom, 524);
-      }
-    },
-  );
-
-  await suite.test(
-    "switches semantic regions without retaining the previous shift",
-    async () => {
-      const harness = await createHarness();
-      harness.viewport.height = 450;
-      const commandSearch = harness.input([commandSearchSelector]);
-      harness.focus(commandSearch);
+      settle(harness);
 
       const composer = harness.input([composerSelector]);
       const center = harness.region(mainRegionSelector, composer);
       harness.focus(composer);
-      assert.equal(shiftOf(center), "-318px");
+      settle(harness);
 
-      const fileSearch = harness.input([fileTreeSearchSelector]);
-      const left = harness.region(leftRegionSelector, fileSearch);
-      harness.focus(fileSearch);
-      assert.equal(center.getAttribute(activeRegionAttribute), null);
-      assert.equal(shiftOf(center), "");
-      assert.equal(left.getAttribute(activeRegionAttribute), null);
-      assert.equal(
-        harness.root.getAttribute(activeSurfaceAttribute),
-        "file-tree-search",
-      );
+      assert.equal(harness.root.getAttribute(keyboardAttribute), "true");
+      assert.equal(shiftOf(center), "-318px");
     },
   );
 
-  await suite.test("does not normalize a hardware-keyboard focus", async () => {
+  await suite.test("does nothing for hardware-keyboard focus", async () => {
     const harness = await createHarness();
-    const input = harness.input([composerSelector]);
-    const center = harness.region(mainRegionSelector, input);
+    const composer = harness.input([composerSelector]);
+    const center = harness.region(mainRegionSelector, composer);
     harness.document.documentElement.scrollTop = 41;
     harness.document.body.scrollTop = 23;
 
-    harness.focus(input);
-    assert.equal(shiftOf(center), "0px");
-    harness.blur(input);
-    harness.clock.runFrame();
+    harness.focus(composer);
+    settle(harness);
+    assert.equal(shiftOf(center), "");
+    assert.equal(harness.root.getAttribute(keyboardAttribute), "false");
 
+    harness.blur(composer);
+    await settleFocusTurn();
     assert.equal(harness.root.getAttribute(sessionAttribute), "false");
     assert.equal(harness.root.getAttribute(activeSurfaceAttribute), "none");
-    assert.equal(center.getAttribute(activeRegionAttribute), null);
     assert.deepEqual(harness.scrollCalls, []);
     assert.equal(harness.document.documentElement.scrollTop, 41);
     assert.equal(harness.document.body.scrollTop, 23);
   });
 
   await suite.test(
-    "invalidates queued recovery when focus changes region",
+    "clears the last owner after blur and stable close",
     async () => {
       const harness = await createHarness();
       const composer = harness.input([composerSelector]);
-      harness.region(mainRegionSelector, composer);
+      const center = harness.region(mainRegionSelector, composer);
       harness.focus(composer);
       harness.viewport.height = 450;
       harness.viewportChanged();
+      settle(harness);
+
+      harness.blur(composer);
       harness.viewport.height = 768;
       harness.viewportChanged();
+      await settleFocusTurn();
+      settle(harness);
 
-      harness.clock.advanceWithoutFrame(160);
-      harness.viewport.height = 450;
-      const second = harness.input([], { bottom: 650, top: 600 });
-      const right = harness.region(rightRegionSelector, second);
-      harness.focus(second);
-      harness.clock.runFrames(3);
-
-      assert.deepEqual(harness.scrollCalls, []);
-      assert.equal(harness.root.getAttribute(sessionAttribute), "true");
-      assert.equal(harness.root.getAttribute(keyboardAttribute), "true");
-      assert.equal(
-        harness.root.getAttribute(activeSurfaceAttribute),
-        "right-sidebar-editor",
-      );
-      assert.equal(shiftOf(right), "-200px");
-    },
-  );
-
-  await suite.test(
-    "finishes close recovery while frame sampling remains active",
-    async () => {
-      const harness = await createHarness();
-      const input = harness.input([composerSelector]);
-      const center = harness.region(mainRegionSelector, input);
-      harness.focus(input);
-      harness.viewport.height = 450;
-      harness.viewportChanged();
-      harness.viewport.height = 768;
-      harness.viewportChanged();
-      harness.clock.runFrames(20);
-
-      assert.deepEqual(harness.scrollCalls, [[0, 0]]);
-      assert.equal(harness.root.getAttribute(keyboardAttribute), "false");
-      assert.equal(harness.root.getAttribute(sessionAttribute), "true");
-      assert.equal(shiftOf(center), "0px");
-
-      harness.viewport.height = 440;
-      harness.viewportChanged();
-      assert.equal(harness.root.getAttribute(keyboardAttribute), "true");
-      assert.equal(shiftOf(center), "-328px");
-    },
-  );
-
-  await suite.test(
-    "clears the region only after blur and keyboard close",
-    async () => {
-      const harness = await createHarness();
-      const input = harness.input([composerSelector]);
-      const center = harness.region(mainRegionSelector, input);
-      harness.focus(input);
-      harness.viewport.height = 450;
-      harness.viewportChanged();
-      harness.blur(input);
-      harness.viewport.height = 768;
-      harness.viewportChanged();
-      harness.clock.runFrames(20);
-
-      assert.deepEqual(harness.scrollCalls, [[0, 0]]);
       assert.equal(harness.root.getAttribute(keyboardAttribute), "false");
       assert.equal(harness.root.getAttribute(sessionAttribute), "false");
+      assert.equal(harness.root.getAttribute(activeSurfaceAttribute), "none");
       assert.equal(center.getAttribute(activeRegionAttribute), null);
       assert.equal(shiftOf(center), "");
+      assert.deepEqual(harness.scrollCalls, []);
     },
   );
 
   await suite.test(
-    "re-baselines rotation and Split View width changes",
+    "re-baselines rotation only after the open keyboard closes",
     async () => {
       const harness = await createHarness();
-      const first = harness.input([composerSelector]);
-      const center = harness.region(mainRegionSelector, first);
-      harness.focus(first);
+      const composer = harness.input([composerSelector]);
+      const center = harness.region(mainRegionSelector, composer);
+      harness.focus(composer);
       harness.viewport.height = 450;
       harness.viewportChanged();
+      settle(harness);
 
       harness.window.innerWidth = 700;
       Object.assign(harness.viewport, { height: 400, width: 700 });
       center.rect = { bottom: 400, top: 0 };
       harness.window.emit("resize");
+      settle(harness);
       assert.equal(shiftOf(center), "0px");
+
       harness.viewport.height = 650;
       harness.viewportChanged();
-      harness.clock.runFrames(20);
-      assert.deepEqual(harness.scrollCalls, [[0, 0]]);
+      settle(harness);
+      assert.equal(harness.root.getAttribute(keyboardAttribute), "false");
+      assert.equal(shiftOf(center), "");
 
-      harness.blur(first);
-      harness.clock.runFrame();
-      assert.equal(harness.root.getAttribute(sessionAttribute), "false");
-
-      const second = harness.input([composerSelector]);
-      const nextCenter = harness.region(mainRegionSelector, second);
-      nextCenter.rect = { bottom: 650, top: 0 };
-      harness.focus(second);
+      center.rect = { bottom: 650, top: 0 };
       harness.viewport.height = 520;
       harness.viewportChanged();
+      settle(harness);
       assert.equal(harness.root.getAttribute(keyboardAttribute), "true");
-      assert.equal(shiftOf(nextCenter), "-130px");
+      assert.equal(shiftOf(center), "-130px");
+    },
+  );
+
+  await suite.test(
+    "keeps prompt DOM attributes static and gates only mount autofocus",
+    async () => {
+      const patcher = await readFile(
+        new URL("../scripts/patch-desktop-asar.mjs", import.meta.url),
+        "utf8",
+      );
+      const shim = await readFile(
+        new URL("../src/browser/shim.ts", import.meta.url),
+        "utf8",
+      );
+      const coordinator = await readFile(sourcePath, "utf8");
+
+      assert.match(patcher, /stable prompt editor keyboard surface attributes/);
+      assert.match(patcher, /stable prompt editor DOM events/);
+      assert.match(patcher, /touch-safe composer mount focus/);
+      assert.match(patcher, /shouldAutoFocusComposer/);
+      assert.match(shim, /!hasTouchInputCapability\(\)/);
+      assert.doesNotMatch(coordinator, /requestAnimationFrame|scrollTo/);
     },
   );
 });

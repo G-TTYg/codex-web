@@ -172,26 +172,28 @@ widget policy. The extracted Desktop renderer fixes `body` and `#root` to
 The browser shim does not resize or translate `body`, `#root`, or the complete
 Desktop shell. It assigns each focused editable to a semantic owner and moves
 only that renderer-owned region with the CSS individual `translate` property,
-which composes with existing renderer transforms. The semantic patch marks the
-prompt editor as `composer`; its unique
+which composes with existing renderer transforms. The semantic patch gives the
+prompt editor a static `composer` marker; it never changes `inputmode` or
+rebuilds ProseMirror props during a pointer event. Mount-time composer autofocus
+is declined on touch-capable browsers without changing direct tap, paste, or
+hardware-keyboard focus. The prompt's unique
 `[data-app-shell-main-content-layout]` ancestor is the center content region.
 Only that center region follows the keyboard edge, leaving the application
 header and both sidebars stationary. Ordinary center editors, dialogs, and
 non-search sidebar editors move their own region only far enough to expose the
 focused input. Top command search and file-tree search keep native Visual
 Viewport behavior; a visible text-file search receives a zero regional shift.
-Changing focus clears the previous owner before applying the new region.
 
-Region offsets are recalculated from the unshifted owner/input rectangle on
-every Visual Viewport frame, so motion cannot compound and `offsetTop` accounts
-for WebKit's own focus pan. Opening and closing are tracked through viewport
-events plus a bounded animation-frame sampler. Keyboard detection is used only
-for close cleanup. After WebKit expands the viewport, the shim removes the
-active region marker and clears only residual document-root offsets while
-preserving renderer-owned conversation/editor scroll positions. If iOS
-dismisses the keyboard without blurring the editor, the same semantic region
-stays armed at zero shift for a later reopen. A newly focused editor invalidates
-every queued recovery frame from the previous keyboard session.
+Visual Viewport changes are settle-debounced into a one-way transaction. The
+shim does not alter geometry during WebKit's opening resize storm. Once the
+viewport is stable, it reads the unshifted owner/input rectangle and applies at
+most one correction for that focused owner; later viewport pan or accessory-bar
+noise cannot rewrite it. A focus change commits the new owner only after its
+geometry settles. Stable close removes the correction synchronously and relies
+on the browser to restore its own Layout Viewport: the shim never calls
+`scrollTo`, writes root scroll offsets, or runs an animation-frame sampler. If
+iOS dismisses the keyboard without blurring, the focused owner remains armed
+without a shift and can start a later transaction from the restored baseline.
 The server shim owns privileged host behavior such as filesystem access and
 launching the Codex app-server. Terminal creation remains in the official Desktop shell and
 resolves the project-owned `node-pty` installation through Node's normal module

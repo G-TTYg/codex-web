@@ -702,8 +702,9 @@ replaceOneOfOnce(
 );
 
 // The browser keyboard coordinator must distinguish the bottom prompt editor
-// from top/side search and form inputs. Mark the shared prompt editor itself;
-// placeholders and fingerprinted composer classes are not stable contracts.
+// from top/side search and form inputs. Keep the editing host attributes static:
+// rebuilding ProseMirror props during touchstart can invalidate WebKit's active
+// selection while its software keyboard is being created.
 replaceOneOfOnce(
   appInitialPath,
   [
@@ -711,22 +712,65 @@ replaceOneOfOnce(
       before:
         'g=new g6a,_=c,v=new Ban(null,{attributes:{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`},',
       after:
+        'g=new g6a,_=c,v=new Ban(null,{attributes:{"aria-multiline":`true`,"data-codex-keyboard-surface":`composer`,dir:`auto`,role:`textbox`,spellcheck:`true`},',
+    },
+    {
+      before:
         'g=new g6a,_=c,codexWebPointerInput=!1,codexWebAttributes=()=>codexWebPointerInput?{"aria-multiline":`true`,"data-codex-keyboard-surface":`composer`,dir:`auto`,role:`textbox`,spellcheck:`true`}:{"aria-multiline":`true`,"data-codex-keyboard-surface":`composer`,dir:`auto`,role:`textbox`,spellcheck:`true`,inputmode:`none`},codexWebSetPointerInput=e=>{codexWebPointerInput!==e&&(codexWebPointerInput=e,v.isDestroyed||v.setProps({attributes:codexWebAttributes()}))},v=new Ban(null,{attributes:codexWebAttributes(),',
+      after:
+        'g=new g6a,_=c,v=new Ban(null,{attributes:{"aria-multiline":`true`,"data-codex-keyboard-surface":`composer`,dir:`auto`,role:`textbox`,spellcheck:`true`},',
     },
     {
       before:
         'g=new S6a,_=c,v=new Ban(null,{attributes:{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`},',
       after:
+        'g=new S6a,_=c,v=new Ban(null,{attributes:{"aria-multiline":`true`,"data-codex-keyboard-surface":`composer`,dir:`auto`,role:`textbox`,spellcheck:`true`},',
+    },
+    {
+      before:
         'g=new S6a,_=c,codexWebPointerInput=!1,codexWebAttributes=()=>codexWebPointerInput?{"aria-multiline":`true`,"data-codex-keyboard-surface":`composer`,dir:`auto`,role:`textbox`,spellcheck:`true`}:{"aria-multiline":`true`,"data-codex-keyboard-surface":`composer`,dir:`auto`,role:`textbox`,spellcheck:`true`,inputmode:`none`},codexWebSetPointerInput=e=>{codexWebPointerInput!==e&&(codexWebPointerInput=e,v.isDestroyed||v.setProps({attributes:codexWebAttributes()}))},v=new Ban(null,{attributes:codexWebAttributes(),',
+      after:
+        'g=new S6a,_=c,v=new Ban(null,{attributes:{"aria-multiline":`true`,"data-codex-keyboard-surface":`composer`,dir:`auto`,role:`textbox`,spellcheck:`true`},',
     },
   ],
-  "prompt editor pointer input mode and keyboard surface attributes",
+  "stable prompt editor keyboard surface attributes",
 );
-replaceOnce(
+replaceOneOfOnce(
   appInitialPath,
-  "handleDOMEvents:{keyup(e,t){",
-  "handleDOMEvents:{mousedown(e,t){return codexWebSetPointerInput(!0),!1},touchstart(e,t){return codexWebSetPointerInput(!0),!1},blur(e,t){return codexWebSetPointerInput(!1),!1},keyup(e,t){",
-  "prompt editor pointer input mode events",
+  [
+    {
+      before:
+        "handleDOMEvents:{mousedown(e,t){return codexWebSetPointerInput(!0),!1},touchstart(e,t){return codexWebSetPointerInput(!0),!1},blur(e,t){return codexWebSetPointerInput(!1),!1},keyup(e,t){",
+      after: "handleDOMEvents:{keyup(e,t){",
+    },
+    {
+      before: "handleDOMEvents:{keyup(e,t){",
+      after: "handleDOMEvents:{keyup(e,t){",
+    },
+  ],
+  "stable prompt editor DOM events",
+);
+
+// Desktop requests a primary-composer focus when a route mounts. On touch
+// devices the shim declines only that request, avoiding an unsolicited
+// software keyboard without changing normal tap, paste, or keyboard focus.
+replaceOneOfOnce(
+  appInitialPath,
+  [
+    {
+      before:
+        "n.focusAnimationFrameId=requestAnimationFrame(()=>{hnr===n&&(n.focusAnimationFrameId=null,e.isConnected&&lE.get(e)?.composerId===t&&(tnr(),e.focus()))})",
+      after:
+        "n.focusAnimationFrameId=requestAnimationFrame(()=>{hnr===n&&(n.focusAnimationFrameId=null,e.isConnected&&lE.get(e)?.composerId===t&&(tnr(),window.__ELECTRON_SHIM__?.shouldAutoFocusComposer?.()!==!1&&e.focus()))})",
+    },
+    {
+      before:
+        "n.focusAnimationFrameId=requestAnimationFrame(()=>{gnr===n&&(n.focusAnimationFrameId=null,e.isConnected&&cE.get(e)?.composerId===t&&(nnr(),e.focus()))})",
+      after:
+        "n.focusAnimationFrameId=requestAnimationFrame(()=>{gnr===n&&(n.focusAnimationFrameId=null,e.isConnected&&cE.get(e)?.composerId===t&&(nnr(),window.__ELECTRON_SHIM__?.shouldAutoFocusComposer?.()!==!1&&e.focus()))})",
+    },
+  ],
+  "touch-safe composer mount focus",
 );
 
 replaceOneOfOnce(

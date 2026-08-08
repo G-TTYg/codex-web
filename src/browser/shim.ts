@@ -10,7 +10,11 @@ import {
   openSelectWorkspaceRootDialog,
   type WorkspaceDirectoryEntries,
 } from "./workspace-root-dialog";
-import { installMobileLayout, shouldUseMobileLayout } from "./mobile-layout";
+import {
+  hasTouchInputCapability,
+  installMobileLayout,
+  shouldUseMobileLayout,
+} from "./mobile-layout";
 import { installMobileInteractions } from "./mobile-interactions";
 import { installMobileKeyboardViewport } from "./mobile-keyboard";
 import { installClipboardCompatibility } from "./clipboard";
@@ -122,6 +126,7 @@ type ElectronShimState = {
   closeRightPanel?: () => void;
   openContextMenuFromButton?: (button: HTMLElement) => void;
   setRendererContextMenuOpen?: SetRendererContextMenuOpen;
+  shouldAutoFocusComposer?: () => boolean;
   onMemoryNavigationChanged?: (navigation: MemoryNavigationChange) => void;
   overrideAdapter?: {
     getGateOverride?: (
@@ -381,6 +386,10 @@ const electronShim = (window.__ELECTRON_SHIM__ ??= {});
 const buildFlavor: "prod" | "dev" | "agent" | string = "prod";
 
 installClipboardCompatibility();
+// Mount-time composer focus is useful with a hardware keyboard, but on touch
+// devices it must not create a software keyboard without a direct tap. Keep the
+// editor DOM/inputmode stable and gate only the renderer's mount-focus action.
+electronShim.shouldAutoFocusComposer = () => !hasTouchInputCapability();
 electronShim.setRendererContextMenuOpen =
   createRendererContextMenuCoordinator();
 // Install the viewport focus listener before mobile search intentionally stops
