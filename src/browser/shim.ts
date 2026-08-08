@@ -383,11 +383,14 @@ const buildFlavor: "prod" | "dev" | "agent" | string = "prod";
 installClipboardCompatibility();
 electronShim.setRendererContextMenuOpen =
   createRendererContextMenuCoordinator();
+// Install the viewport focus listener before mobile search intentionally stops
+// blur propagation. The keyboard coordinator still observes the settled focus
+// target without allowing renderer-owned search surfaces to unmount.
+installMobileKeyboardViewport();
 installMobileLayout(
   () => electronShim.closeSidebar?.(),
   () => electronShim.closeRightPanel?.(),
 );
-installMobileKeyboardViewport();
 installMobileInteractions();
 
 if (typeof globalThis.crypto.randomUUID !== "function") {

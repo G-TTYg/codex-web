@@ -3,10 +3,11 @@
  *
  * The Desktop renderer sizes body and #root to 100vh. Software keyboards only
  * shrink the Visual Viewport on mobile WebKit, so the composer otherwise stays
- * at the bottom of the obscured Desktop-height shell. While a keyboard is
- * confirmed open, pin the whole app shell to the Visual Viewport. On close,
- * normalize only the document root; renderer-owned conversation and editor
- * scrollers retain their positions.
+ * at the bottom of the obscured Desktop-height shell. As soon as an editable
+ * surface receives focus, pin the whole app shell to the Visual Viewport and
+ * track WebKit's animation independently of keyboard-detection timing. On
+ * close, normalize only the document root; renderer-owned conversation and
+ * editor scrollers retain their positions.
  */
 
 import { hasTouchInputCapability } from "./mobile-layout";
@@ -32,6 +33,7 @@ const EDITABLE_SELECTOR = [
   'input[type="week"]',
 ].join(", ");
 const KEYBOARD_ATTRIBUTE = "data-codex-software-keyboard";
+const VIEWPORT_LOCK_ATTRIBUTE = "data-codex-visual-viewport-lock";
 const KEYBOARD_HEIGHT_PROPERTY = "--codex-keyboard-viewport-height";
 const KEYBOARD_LEFT_PROPERTY = "--codex-keyboard-viewport-left";
 const KEYBOARD_TOP_PROPERTY = "--codex-keyboard-viewport-top";
@@ -39,13 +41,14 @@ const KEYBOARD_WIDTH_PROPERTY = "--codex-keyboard-viewport-width";
 const KEYBOARD_HEIGHT_THRESHOLD_PX = 80;
 const VIEWPORT_WIDTH_EPSILON_PX = 2;
 const RESTORE_DELAY_MS = 160;
+const VIEWPORT_ANIMATION_TRACK_MS = 1_200;
 
 const KEYBOARD_VIEWPORT_STYLES = `
-html[${KEYBOARD_ATTRIBUTE}="true"] {
+html[${VIEWPORT_LOCK_ATTRIBUTE}="true"] {
   overflow: hidden !important;
 }
 
-html[${KEYBOARD_ATTRIBUTE}="true"] body {
+html[${VIEWPORT_LOCK_ATTRIBUTE}="true"] body {
   position: fixed !important;
   inset: auto !important;
   top: var(${KEYBOARD_TOP_PROPERTY}, 0px) !important;
@@ -57,7 +60,7 @@ html[${KEYBOARD_ATTRIBUTE}="true"] body {
   overflow: hidden !important;
 }
 
-html[${KEYBOARD_ATTRIBUTE}="true"] #root {
+html[${VIEWPORT_LOCK_ATTRIBUTE}="true"] #root {
   width: 100% !important;
   height: 100% !important;
   min-height: 0 !important;
@@ -100,7 +103,7 @@ function installKeyboardViewportStyles(): void {
   (document.head ?? document.documentElement).append(style);
 }
 
-function setKeyboardViewport(viewport: ViewportSize): void {
+function setVisualViewportBounds(viewport: ViewportSize): void {
   const root = document.documentElement;
   root.style.setProperty(KEYBOARD_HEIGHT_PROPERTY, `${viewport.height}px`);
   root.style.setProperty(KEYBOARD_LEFT_PROPERTY, `${viewport.left}px`);
@@ -108,7 +111,7 @@ function setKeyboardViewport(viewport: ViewportSize): void {
   root.style.setProperty(KEYBOARD_WIDTH_PROPERTY, `${viewport.width}px`);
 }
 
-function clearKeyboardViewport(): void {
+function clearVisualViewportBounds(): void {
   const root = document.documentElement;
   root.style.removeProperty(KEYBOARD_HEIGHT_PROPERTY);
   root.style.removeProperty(KEYBOARD_LEFT_PROPERTY);
@@ -171,8 +174,12 @@ export function installMobileKeyboardViewport(): void {
   let minimumSessionHeight = baseline.height;
   let keyboardWasOpen = false;
   let editorSessionActive = false;
+  let viewportLocked = false;
   let restoreTimer: number | null = null;
   let restoreGeneration = 0;
+  let restoreInProgress = false;
+  let viewportAnimationFrame: number | null = null;
+  let viewportAnimationGeneration = 0;
 
   const setKeyboardOpen = (open: boolean): void => {
     document.documentElement.setAttribute(
@@ -181,11 +188,37 @@ export function installMobileKeyboardViewport(): void {
     );
   };
 
+  const setViewportLocked = (
+    locked: boolean,
+    viewport = viewportSize(),
+  ): void => {
+    viewportLocked = locked;
+    if (locked) {
+      // Write the initial bounds before enabling the selector so there is no
+      // frame where the renderer's 100vh body is fixed with fallback sizes.
+      setVisualViewportBounds(viewport);
+      document.documentElement.setAttribute(VIEWPORT_LOCK_ATTRIBUTE, "true");
+      return;
+    }
+
+    document.documentElement.setAttribute(VIEWPORT_LOCK_ATTRIBUTE, "false");
+    clearVisualViewportBounds();
+  };
+
+  const stopViewportAnimationWatch = (): void => {
+    viewportAnimationGeneration += 1;
+    if (viewportAnimationFrame !== null) {
+      window.cancelAnimationFrame(viewportAnimationFrame);
+      viewportAnimationFrame = null;
+    }
+  };
+
   const cancelRestore = (): void => {
     // A timer may already have handed work to requestAnimationFrame. Advancing
     // the generation also invalidates those queued frames when a new input is
     // focused or the keyboard begins changing size again.
     restoreGeneration += 1;
+    restoreInProgress = false;
     if (restoreTimer !== null) {
       window.clearTimeout(restoreTimer);
       restoreTimer = null;
@@ -195,15 +228,19 @@ export function installMobileKeyboardViewport(): void {
   const restoreAfterAnimation = (): void => {
     // A plain focus transition must never move the page. Root normalization is
     // only valid after this session actually observed keyboard occlusion.
-    if (!keyboardWasOpen) {
+    if (!keyboardWasOpen || restoreInProgress) {
       return;
     }
 
     cancelRestore();
+    restoreInProgress = true;
     const generation = restoreGeneration;
     restoreTimer = window.setTimeout(() => {
       restoreTimer = null;
       if (generation !== restoreGeneration || !keyboardWasOpen) {
+        if (generation === restoreGeneration) {
+          restoreInProgress = false;
+        }
         return;
       }
 
@@ -212,6 +249,9 @@ export function installMobileKeyboardViewport(): void {
         current.height - minimumSessionHeight <
         KEYBOARD_HEIGHT_THRESHOLD_PX
       ) {
+        // The close animation has not expanded far enough yet. Release this
+        // attempt and let the next viewport sample schedule a fresh one.
+        restoreInProgress = false;
         return;
       }
 
@@ -220,34 +260,51 @@ export function installMobileKeyboardViewport(): void {
       // generation so a newly focused editor cannot be moved by stale work.
       window.requestAnimationFrame(() => {
         if (generation !== restoreGeneration || !keyboardWasOpen) {
+          if (generation === restoreGeneration) {
+            restoreInProgress = false;
+          }
           return;
         }
         window.requestAnimationFrame(() => {
           if (generation !== restoreGeneration || !keyboardWasOpen) {
+            if (generation === restoreGeneration) {
+              restoreInProgress = false;
+            }
             return;
           }
+          restoreInProgress = false;
           keyboardWasOpen = false;
           setKeyboardOpen(false);
-          clearKeyboardViewport();
+          editorSessionActive = isEditableTarget(document.activeElement);
+          if (editorSessionActive) {
+            // iOS can dismiss its keyboard without blurring the editor. Keep
+            // the viewport contract armed so reopening the keyboard does not
+            // depend on another focus event.
+            setViewportLocked(true);
+          } else {
+            stopViewportAnimationWatch();
+            setViewportLocked(false);
+          }
           resetRootScroll();
           baseline = viewportSize();
           minimumSessionHeight = baseline.height;
-          editorSessionActive = isEditableTarget(document.activeElement);
         });
       });
     }, RESTORE_DELAY_MS);
   };
 
-  const handleViewportChange = (): void => {
+  function handleViewportChange(): void {
     if (!keyboardViewportEnabled()) {
+      if (viewportLocked) {
+        stopViewportAnimationWatch();
+        setViewportLocked(false);
+      }
       return;
     }
 
     const current = viewportSize();
-    if (keyboardWasOpen) {
-      // Visual Viewport scroll events continue while WebKit pans the focused
-      // editor. Keep the fixed shell aligned with every animation step.
-      setKeyboardViewport(current);
+    if (viewportLocked) {
+      setVisualViewportBounds(current);
     }
     if (
       Math.abs(current.layoutWidth - baseline.layoutWidth) >
@@ -266,6 +323,10 @@ export function installMobileKeyboardViewport(): void {
     if (!editorSessionActive && !keyboardWasOpen) {
       baseline = current;
       minimumSessionHeight = current.height;
+      if (viewportLocked) {
+        stopViewportAnimationWatch();
+        setViewportLocked(false);
+      }
       return;
     }
 
@@ -274,7 +335,6 @@ export function installMobileKeyboardViewport(): void {
     if (baseline.height - current.height >= KEYBOARD_HEIGHT_THRESHOLD_PX) {
       cancelRestore();
       keyboardWasOpen = true;
-      setKeyboardViewport(current);
       setKeyboardOpen(true);
       return;
     }
@@ -288,9 +348,32 @@ export function installMobileKeyboardViewport(): void {
       // the renderer's 100vh shell and causes the same disappearing jump.
       restoreAfterAnimation();
     }
+  }
+
+  const startViewportAnimationWatch = (): void => {
+    stopViewportAnimationWatch();
+    const generation = viewportAnimationGeneration;
+    const deadline = performance.now() + VIEWPORT_ANIMATION_TRACK_MS;
+
+    const trackFrame = (): void => {
+      viewportAnimationFrame = null;
+      if (generation !== viewportAnimationGeneration || !viewportLocked) {
+        return;
+      }
+
+      // Some WebKit releases coalesce Visual Viewport events until late in the
+      // keyboard animation. Sampling during the bounded transition window
+      // keeps the app shell aligned even when no resize/scroll event arrives.
+      handleViewportChange();
+      if (performance.now() < deadline) {
+        viewportAnimationFrame = window.requestAnimationFrame(trackFrame);
+      }
+    };
+
+    viewportAnimationFrame = window.requestAnimationFrame(trackFrame);
   };
 
-  document.addEventListener(
+  window.addEventListener(
     "focusin",
     (event) => {
       if (!keyboardViewportEnabled() || !isEditableTarget(event.target)) {
@@ -300,6 +383,10 @@ export function installMobileKeyboardViewport(): void {
       cancelRestore();
       editorSessionActive = true;
       const current = viewportSize();
+      // Visibility is focus-driven, not threshold-driven. A hardware keyboard
+      // leaves these bounds equal to the normal viewport, while a software
+      // keyboard can now shrink them from its very first animation step.
+      setViewportLocked(true, current);
       if (!keyboardWasOpen) {
         // Keep the last no-editor height as the keyboard baseline. WebKit may
         // dispatch focusin after the first Visual Viewport animation step; if
@@ -308,11 +395,12 @@ export function installMobileKeyboardViewport(): void {
         minimumSessionHeight = Math.min(baseline.height, current.height);
         handleViewportChange();
       }
+      startViewportAnimationWatch();
     },
     true,
   );
 
-  document.addEventListener(
+  window.addEventListener(
     "focusout",
     () => {
       if (!keyboardViewportEnabled() || !editorSessionActive) {
@@ -326,14 +414,29 @@ export function installMobileKeyboardViewport(): void {
           return;
         }
         editorSessionActive = false;
-        restoreAfterAnimation();
+        if (keyboardWasOpen) {
+          restoreAfterAnimation();
+          return;
+        }
+
+        stopViewportAnimationWatch();
+        setViewportLocked(false);
+        baseline = viewportSize();
+        minimumSessionHeight = baseline.height;
       });
     },
     true,
   );
 
+  const handleViewportEvent = (): void => {
+    handleViewportChange();
+    if (viewportLocked) {
+      startViewportAnimationWatch();
+    }
+  };
+
   const viewport = window.visualViewport;
-  viewport?.addEventListener("resize", handleViewportChange);
-  viewport?.addEventListener("scroll", handleViewportChange);
-  window.addEventListener("resize", handleViewportChange);
+  viewport?.addEventListener("resize", handleViewportEvent);
+  viewport?.addEventListener("scroll", handleViewportEvent);
+  window.addEventListener("resize", handleViewportEvent);
 }
