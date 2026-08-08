@@ -1,15 +1,15 @@
 import {
   hasTouchInputCapability,
-  NARROW_VIEWPORT_QUERY,
+  PHONE_LAYOUT_VIEWPORT_QUERY,
   shouldUseMobileUI,
   TOUCH_CAPABILITY_QUERY,
-  TOUCH_LAYOUT_VIEWPORT_QUERY,
 } from "./mobile-layout";
 
 const MOBILE_UI_ATTRIBUTE = "data-codex-mobile-ui";
 const TOUCH_CAPABILITY_ATTRIBUTE = "data-codex-touch-capable";
 const TOUCH_INPUT_ATTRIBUTE = "data-codex-touch-input";
 const CONTEXT_TARGET_SELECTOR = '[data-codex-context-target="true"]';
+const OPEN_MENU_SELECTOR = '[role="menu"][data-state="open"]';
 
 const MOBILE_INTERACTION_STYLES = `
 /* The thread action is renderer-owned and remains absent from Desktop layouts. */
@@ -18,10 +18,25 @@ html:not([${MOBILE_UI_ATTRIBUTE}="true"]) .codex-mobile-context-action {
 }
 
 html[${MOBILE_UI_ATTRIBUTE}="true"] .codex-mobile-context-action {
+  align-items: center;
+  box-sizing: border-box;
   display: inline-flex !important;
+  flex: 0 0 32px;
+  justify-content: center;
+  max-height: 32px;
+  max-width: 32px;
   min-height: 32px !important;
   min-width: 32px !important;
+  padding: 0 !important;
   touch-action: pan-y !important;
+}
+
+/* The upstream rail is absolutely positioned. Reserve its native 52px lane
+   explicitly so a permanently visible touch action cannot cover row text. */
+html[${MOBILE_UI_ATTRIBUTE}="true"]
+  :is([role="button"], [role="treeitem"]):has(.codex-mobile-context-action) {
+  box-sizing: border-box;
+  padding-inline-end: 56px !important;
 }
 
 /* Thread actions use the renderer's existing trailing rail. On touch layouts
@@ -64,6 +79,8 @@ html[${MOBILE_UI_ATTRIBUTE}="true"]
   overflow: visible !important;
   pointer-events: auto !important;
   visibility: visible !important;
+  flex: 0 0 auto !important;
+  max-width: 100%;
   width: auto !important;
 }
 
@@ -74,9 +91,13 @@ html[${MOBILE_UI_ATTRIBUTE}="true"]
 
 html[${MOBILE_UI_ATTRIBUTE}="true"]
   :is(button, a, [role="button"])[aria-haspopup="menu"] {
+  box-sizing: border-box;
+  flex-shrink: 0;
   min-height: 30px;
   min-width: 30px;
+  position: relative;
   touch-action: pan-y !important;
+  z-index: 1;
 }
 
 /* A touch sequence on a draggable row remains native vertical panning. These
@@ -125,10 +146,13 @@ html[${MOBILE_UI_ATTRIBUTE}="true"]
   inset-block: 0;
   inset-inline-end: 1px;
   justify-content: center;
+  max-width: 32px;
   min-height: 28px;
   min-width: 28px;
+  padding: 0;
   position: absolute;
   touch-action: pan-x !important;
+  width: 32px;
   z-index: 31;
 }
 
@@ -136,7 +160,9 @@ html[${MOBILE_UI_ATTRIBUTE}="true"]
   aside[data-app-shell-focus-area="right-panel"]
   [data-app-shell-tab-controller]:has(.codex-mobile-tab-context-action)
   button[role="tab"] {
-  padding-inline-end: 22px;
+  box-sizing: border-box;
+  min-width: 0;
+  padding-inline-end: 36px !important;
 }
 `;
 
@@ -149,6 +175,7 @@ type MobileWindow = Window & {
 };
 
 let installed = false;
+let contextMenuOpenRequest = 0;
 
 function installStyles(): void {
   if (document.querySelector("style[data-codex-mobile-interactions]")) {
@@ -171,6 +198,85 @@ function touchInputEnabled(): boolean {
   );
 }
 
+function dispatchContextMenu(
+  target: HTMLElement,
+  clientX: number,
+  clientY: number,
+): void {
+  if (!target.isConnected) {
+    return;
+  }
+
+  target.dispatchEvent(
+    new MouseEvent("contextmenu", {
+      bubbles: true,
+      button: 2,
+      cancelable: true,
+      clientX,
+      clientY,
+      view: window,
+    }),
+  );
+}
+
+function dismissOpenMenu(): boolean {
+  const openMenus = document.querySelectorAll<HTMLElement>(OPEN_MENU_SELECTOR);
+  const openMenu = openMenus.item(openMenus.length - 1);
+  if (!openMenu) {
+    return false;
+  }
+
+  // Let the renderer's Radix layer own dismissal, focus restoration and exit
+  // animation. This matches a hardware secondary click switching menu targets.
+  const activeElement = document.activeElement;
+  const escapeTarget =
+    activeElement instanceof HTMLElement && openMenu.contains(activeElement)
+      ? activeElement
+      : openMenu;
+  escapeTarget.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      code: "Escape",
+      composed: true,
+      key: "Escape",
+    }),
+  );
+  return true;
+}
+
+function openAfterMenusDismiss(
+  request: number,
+  target: HTMLElement,
+  clientX: number,
+  clientY: number,
+  remainingFrames = 8,
+): void {
+  if (request !== contextMenuOpenRequest) {
+    return;
+  }
+  if (!dismissOpenMenu()) {
+    dispatchContextMenu(target, clientX, clientY);
+    return;
+  }
+  if (remainingFrames <= 0) {
+    return;
+  }
+
+  // A root menu and its submenu can both be open. Close the topmost layer one
+  // frame at a time until no native menu remains, while retaining only the most
+  // recent tap if the user changes targets during the exit animation.
+  requestAnimationFrame(() => {
+    openAfterMenusDismiss(
+      request,
+      target,
+      clientX,
+      clientY,
+      remainingFrames - 1,
+    );
+  });
+}
+
 function openContextMenuFromButton(button: HTMLElement): void {
   // Some renderer row components forward onContextMenu but intentionally omit
   // unknown data attributes. Their existing role-bearing root is therefore the
@@ -188,16 +294,10 @@ function openContextMenuFromButton(button: HTMLElement): void {
   }
 
   const rect = button.getBoundingClientRect();
-  target.dispatchEvent(
-    new MouseEvent("contextmenu", {
-      bubbles: true,
-      button: 2,
-      cancelable: true,
-      clientX: rect.left + rect.width / 2,
-      clientY: Math.min(window.innerHeight - 8, rect.bottom),
-      view: window,
-    }),
-  );
+  const clientX = rect.left + rect.width / 2;
+  const clientY = Math.min(window.innerHeight - 8, rect.bottom);
+  const request = ++contextMenuOpenRequest;
+  openAfterMenusDismiss(request, target, clientX, clientY);
 }
 
 function onPointerDown(event: PointerEvent): void {
@@ -230,8 +330,7 @@ export function installMobileInteractions(): void {
   electronShim.openContextMenuFromButton = openContextMenuFromButton;
 
   const capabilityQueries = [
-    matchMedia(NARROW_VIEWPORT_QUERY),
-    matchMedia(TOUCH_LAYOUT_VIEWPORT_QUERY),
+    matchMedia(PHONE_LAYOUT_VIEWPORT_QUERY),
     matchMedia(TOUCH_CAPABILITY_QUERY),
   ];
   let inputModeWasExplicitlySelected = false;

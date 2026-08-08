@@ -5,8 +5,7 @@
  * attributes do not.
  */
 
-export const NARROW_VIEWPORT_QUERY = "(max-width: 768px)";
-export const TOUCH_LAYOUT_VIEWPORT_QUERY = "(max-width: 1366px)";
+export const PHONE_LAYOUT_VIEWPORT_QUERY = "(max-width: 700px)";
 export const TOUCH_CAPABILITY_QUERY =
   "(any-pointer: coarse), (pointer: coarse), (hover: none)";
 
@@ -116,11 +115,10 @@ export function hasTouchInputCapability(): boolean {
 }
 
 export function shouldUseMobileLayout(): boolean {
-  return (
-    matchMedia(NARROW_VIEWPORT_QUERY).matches ||
-    (hasTouchInputCapability() &&
-      matchMedia(TOUCH_LAYOUT_VIEWPORT_QUERY).matches)
-  );
+  // Layout follows usable viewport width, not input capability. In particular,
+  // a full-size iPad needs the same persistent sidebars as Desktop while still
+  // receiving the touch-only scrolling and context-action adaptations.
+  return matchMedia(PHONE_LAYOUT_VIEWPORT_QUERY).matches;
 }
 
 export function shouldUseMobileUI(): boolean {
@@ -156,14 +154,13 @@ export function installMobileLayout(
   }
   installed = true;
 
-  // Set capability attributes before the renderer mounts so iPadOS does not
-  // briefly bootstrap the Desktop sidebar state and then reflow into drawers.
+  // Set capability attributes before the renderer mounts so phone layouts do
+  // not briefly bootstrap the Desktop sidebar state and then reflow to drawers.
   updateMobileLayoutMode();
   installMobileLayoutStyles();
 
   const layoutQueries = [
-    matchMedia(NARROW_VIEWPORT_QUERY),
-    matchMedia(TOUCH_LAYOUT_VIEWPORT_QUERY),
+    matchMedia(PHONE_LAYOUT_VIEWPORT_QUERY),
     matchMedia(TOUCH_CAPABILITY_QUERY),
   ];
   for (const query of layoutQueries) {

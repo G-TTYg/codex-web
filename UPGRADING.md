@@ -132,14 +132,17 @@ Then verify:
 - the server starts and `/` plus the WebSocket endpoint are reachable;
 - existing and new tasks render;
 - prompt prefill and browser navigation work;
-- the narrow-viewport and touch-tablet (portrait and landscape, through 1366
-  CSS pixels) left and right overlay drawers, touch UI on wider hybrid displays,
-  right-drawer close without residual horizontal offset, outside-tap dismissal,
+- phone-width (through 700 CSS pixels) left and right overlay drawers, persistent
+  Desktop-style sidebars on full-size portrait and landscape iPads, touch UI on
+  iPads and wider hybrid displays, right-drawer close without residual
+  horizontal offset, outside-tap dismissal on phone layouts,
   unchanged application-menu/header controls, opaque panel surfaces, touch
   composer, keyboard-dismiss-safe search, explicit renderer-owned inline row
   and right-panel tab menu buttons, original Radix context menus with their
-  unchanged positioning and animation, absence of browser-owned floating action
-  portals or copied action sheets, first-tap links beneath an open drawer,
+  unchanged positioning and animation, switching inline menu targets dismisses
+  the previous menu first, touch action lanes do not overlap native controls or
+  text, absence of browser-owned floating action portals or copied action sheets,
+  first-tap links beneath an open drawer,
   external-link fallback,
   native Projects/file-tree scrolling from nested row controls, absence of
   touch long-press menus and touch dragging, hardware right click, and mouse

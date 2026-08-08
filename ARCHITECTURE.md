@@ -79,11 +79,11 @@ sidebar state, touch interaction fallbacks, file/workspace selection, and local
 file URLs. `src/browser/mobile-layout.ts` treats `navigator.maxTouchPoints` and
 coarse-pointer media features as touch capabilities rather than relying on a
 user-agent or orientation. Every touch-capable display receives the explicit
-touch action UI; narrow viewports and touch displays up to 1366 CSS pixels use
-opaque overlay drawers. This covers portrait and landscape iPads, including the
-largest iPad Pro viewport, while an ordinary wide mouse-only window retains the
-Desktop layout. The renderer's application-menu/header layout remains intact,
-and the browser layer owns outside-tap dismissal.
+touch action UI, but input capability does not select the page layout. Only
+phone-width viewports up to 700 CSS pixels use opaque overlay drawers; full-size
+iPads retain the renderer's persistent Desktop sidebars in either orientation.
+The renderer's application-menu/header layout remains intact, and the browser
+layer owns outside-tap dismissal on phone layouts.
 Outside-tap dismissal observes the real underlying target after a complete
 click and does not consume its pointer sequence, so links and controls remain
 first-tap operable while a drawer is open.
@@ -101,6 +101,12 @@ copied menu, or menu-style override is used, so layout, focus, localization,
 callbacks, and animation remain owned by the original renderer components.
 Action controls listen only for completed clicks and permit native panning, so a
 normal pointer sequence remains scrolling or the row's primary action.
+Before an inline touch action opens a context menu, the shim asks the existing
+Radix layer to dismiss any open menu with its native Escape path and waits one
+animation frame before dispatching the new target's context event. Touch menu
+switching therefore preserves native focus and exit animation without stacking
+portals. Permanent touch actions reserve the renderer's existing trailing lanes
+so their hit targets cannot cover row or tab text.
 
 The shared semantic patch exposes the renderer-owned right-panel close action
 and its open state to the browser shim. Mobile CSS keeps the animated panel
