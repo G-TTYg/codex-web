@@ -1,13 +1,11 @@
 /**
- * Stabilizes the browser app shell around software-keyboard transitions.
+ * Keeps focused renderer regions usable across software-keyboard transitions.
  *
- * The Desktop renderer sizes body and #root to 100vh. Software keyboards only
- * shrink the Visual Viewport on mobile WebKit, so inputs otherwise disappear
- * below the keyboard or are translated away from the top. The bottom composer
- * preserves the stable shell height and moves the whole shell upward; search,
- * dialog, sidebar, and ordinary form inputs instead fit the shell to the live
- * Visual Viewport. On close, normalize only the document root; renderer-owned
- * conversation and editor scrollers retain their positions.
+ * The Desktop renderer keeps a 100vh shell on mobile WebKit. Moving or sizing
+ * that complete shell also moves unrelated headers and sidebars. This module
+ * instead assigns each editable to a semantic owner: the AI composer lifts the
+ * center content region to the keyboard edge, other regional editors move only
+ * when their input would be occluded, and top search surfaces stay native.
  */
 
 import {
@@ -36,12 +34,10 @@ const EDITABLE_SELECTOR = [
   'input[type="week"]',
 ].join(", ");
 const KEYBOARD_ATTRIBUTE = "data-codex-software-keyboard";
+const KEYBOARD_SESSION_ATTRIBUTE = "data-codex-keyboard-session";
 const ACTIVE_SURFACE_ATTRIBUTE = "data-codex-active-keyboard-surface";
-const VIEWPORT_LOCK_ATTRIBUTE = "data-codex-visual-viewport-lock";
-const KEYBOARD_HEIGHT_PROPERTY = "--codex-keyboard-shell-height";
-const KEYBOARD_LEFT_PROPERTY = "--codex-keyboard-shell-left";
-const KEYBOARD_TOP_PROPERTY = "--codex-keyboard-shell-top";
-const KEYBOARD_WIDTH_PROPERTY = "--codex-keyboard-shell-width";
+const ACTIVE_REGION_ATTRIBUTE = "data-codex-keyboard-region";
+const REGION_SHIFT_PROPERTY = "--codex-keyboard-region-shift";
 const KEYBOARD_HEIGHT_THRESHOLD_PX = 80;
 const VIEWPORT_WIDTH_EPSILON_PX = 2;
 const RESTORE_DELAY_MS = 160;
@@ -49,29 +45,15 @@ const VIEWPORT_ANIMATION_TRACK_MS = 1_200;
 const COMPOSER_SELECTOR = '[data-codex-keyboard-surface="composer"]';
 const FILE_TREE_SEARCH_SELECTOR = "[data-file-tree-search-input]";
 const TEXT_FILE_SEARCH_SELECTOR = "input[data-search]";
+const COMMAND_SEARCH_SELECTOR = '[cmdk-input], [role="searchbox"]';
+const MAIN_CONTENT_REGION_SELECTOR = "[data-app-shell-main-content-layout]";
+const LEFT_PANEL_SELECTOR = "aside.app-shell-left-panel";
+const RIGHT_PANEL_SELECTOR = 'aside[data-app-shell-focus-area="right-panel"]';
 
-const KEYBOARD_SHELL_STYLES = `
-html[${VIEWPORT_LOCK_ATTRIBUTE}="true"] {
-  overflow: hidden !important;
-}
-
-html[${VIEWPORT_LOCK_ATTRIBUTE}="true"] body {
-  position: fixed !important;
-  inset: auto !important;
-  top: var(${KEYBOARD_TOP_PROPERTY}, 0px) !important;
-  left: var(${KEYBOARD_LEFT_PROPERTY}, 0px) !important;
-  width: var(${KEYBOARD_WIDTH_PROPERTY}, 100%) !important;
-  height: var(${KEYBOARD_HEIGHT_PROPERTY}, 100%) !important;
-  min-height: 0 !important;
-  max-height: var(${KEYBOARD_HEIGHT_PROPERTY}, 100%) !important;
-  overflow: hidden !important;
-}
-
-html[${VIEWPORT_LOCK_ATTRIBUTE}="true"] #root {
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 0 !important;
-  max-height: 100% !important;
+const KEYBOARD_REGION_STYLES = `
+[${ACTIVE_REGION_ATTRIBUTE}="active"] {
+  translate: 0 var(${REGION_SHIFT_PROPERTY}, 0px) !important;
+  will-change: translate;
 }
 `;
 
@@ -80,95 +62,66 @@ let installed = false;
 type ViewportSize = {
   height: number;
   layoutWidth: number;
-  left: number;
   top: number;
-  width: number;
 };
 
-type KeyboardLayoutStrategy = "bottom-anchor" | "visual-viewport";
+type KeyboardMovement = "align-region-bottom" | "ensure-visible" | "native";
+
+type KeyboardSurfaceName =
+  | "composer"
+  | "file-tree-search"
+  | "command-search"
+  | "text-file-search"
+  | "dialog-editor"
+  | "left-sidebar-editor"
+  | "right-sidebar-editor"
+  | "main-editor"
+  | "editor";
 
 type KeyboardSurface = {
-  layout: KeyboardLayoutStrategy;
-  name:
-    | "composer"
-    | "file-tree-search"
-    | "command-search"
-    | "text-file-search"
-    | "dialog-editor"
-    | "left-sidebar-editor"
-    | "right-sidebar-editor"
-    | "editor";
-};
-
-const DEFAULT_KEYBOARD_SURFACE: KeyboardSurface = {
-  layout: "visual-viewport",
-  name: "editor",
+  editable: HTMLElement;
+  movement: KeyboardMovement;
+  name: KeyboardSurfaceName;
+  region: HTMLElement | null;
 };
 
 function viewportSize(): ViewportSize {
   const viewport = window.visualViewport;
   return {
     height: viewport?.height ?? window.innerHeight,
-    // The visual viewport can narrow while a keyboard or its accessory UI is
-    // animating. The layout viewport changes only for rotation, split view, or
-    // a real window resize, which are the baseline changes relevant here.
+    // Visual Viewport width can jitter while keyboard accessory UI animates.
+    // Layout width changes only for a real rotation or Split View resize.
     layoutWidth: window.innerWidth,
-    left: viewport?.offsetLeft ?? 0,
     top: viewport?.offsetTop ?? 0,
-    width: viewport?.width ?? window.innerWidth,
   };
 }
 
-function installKeyboardShellStyles(): void {
+function installKeyboardRegionStyles(): void {
   if (document.querySelector("style[data-codex-mobile-keyboard]")) {
     return;
   }
 
   const style = document.createElement("style");
   style.dataset.codexMobileKeyboard = "true";
-  style.textContent = KEYBOARD_SHELL_STYLES;
+  style.textContent = KEYBOARD_REGION_STYLES;
   (document.head ?? document.documentElement).append(style);
 }
 
-function setKeyboardShellBounds(
-  viewport: ViewportSize,
-  baseline: ViewportSize,
-  surface: KeyboardSurface,
-): void {
-  let shellHeight = viewport.height;
-  let shellTop = viewport.top;
-  if (surface.layout === "bottom-anchor") {
-    const baselineBottom = baseline.top + baseline.height;
-    const visibleBottom = viewport.top + viewport.height;
-    const bottomOcclusion = Math.max(0, baselineBottom - visibleBottom);
-    shellHeight = baseline.height;
-    shellTop = baseline.top - bottomOcclusion;
-  }
-  const root = document.documentElement;
-  // The bottom composer preserves the pre-keyboard shell and moves it as one
-  // unit. Search, dialog, sidebar, and ordinary form editors instead consume
-  // the live Visual Viewport so a top-aligned input is not translated away.
-  root.style.setProperty(KEYBOARD_HEIGHT_PROPERTY, `${shellHeight}px`);
-  root.style.setProperty(KEYBOARD_LEFT_PROPERTY, `${viewport.left}px`);
-  root.style.setProperty(KEYBOARD_TOP_PROPERTY, `${shellTop}px`);
-  root.style.setProperty(KEYBOARD_WIDTH_PROPERTY, `${viewport.width}px`);
+function closestHTMLElement(
+  element: Element,
+  selector: string,
+): HTMLElement | null {
+  const match = element.closest(selector);
+  return match instanceof HTMLElement ? match : null;
 }
 
-function clearKeyboardShellBounds(): void {
-  const root = document.documentElement;
-  root.style.removeProperty(KEYBOARD_HEIGHT_PROPERTY);
-  root.style.removeProperty(KEYBOARD_LEFT_PROPERTY);
-  root.style.removeProperty(KEYBOARD_TOP_PROPERTY);
-  root.style.removeProperty(KEYBOARD_WIDTH_PROPERTY);
-}
-
-function editableTarget(target: EventTarget | null): Element | null {
+function editableTarget(target: EventTarget | null): HTMLElement | null {
   if (!(target instanceof Element)) {
     return null;
   }
 
   const editable = target.closest(EDITABLE_SELECTOR);
-  if (editable === null) {
+  if (!(editable instanceof HTMLElement)) {
     return null;
   }
 
@@ -182,49 +135,128 @@ function editableTarget(target: EventTarget | null): Element | null {
   return editable;
 }
 
+function regionalSurface(
+  editable: HTMLElement,
+  selector: string,
+  name: KeyboardSurfaceName,
+): KeyboardSurface | null {
+  const region = closestHTMLElement(editable, selector);
+  return region === null
+    ? null
+    : { editable, movement: "ensure-visible", name, region };
+}
+
 function keyboardSurface(target: EventTarget | null): KeyboardSurface | null {
   const editable = editableTarget(target);
   if (editable === null) {
     return null;
   }
 
-  // These selectors are semantic renderer contracts. They intentionally avoid
+  // These are renderer-owned semantic contracts. They intentionally avoid
   // localized placeholders and fingerprinted utility classes.
   if (editable.closest(COMPOSER_SELECTOR)) {
-    return { layout: "bottom-anchor", name: "composer" };
+    const region = closestHTMLElement(editable, MAIN_CONTENT_REGION_SELECTOR);
+    return {
+      editable,
+      movement: region === null ? "native" : "align-region-bottom",
+      name: "composer",
+      region,
+    };
   }
   if (editable.matches(FILE_TREE_SEARCH_SELECTOR)) {
-    return { layout: "visual-viewport", name: "file-tree-search" };
+    return {
+      editable,
+      movement: "native",
+      name: "file-tree-search",
+      region: null,
+    };
   }
   if (editable.matches(TEXT_FILE_SEARCH_SELECTOR)) {
-    return { layout: "visual-viewport", name: "text-file-search" };
+    return (
+      regionalSurface(
+        editable,
+        MAIN_CONTENT_REGION_SELECTOR,
+        "text-file-search",
+      ) ?? {
+        editable,
+        movement: "native",
+        name: "text-file-search",
+        region: null,
+      }
+    );
   }
-  if (editable.matches(MOBILE_SEARCH_INPUT_SELECTOR)) {
-    return { layout: "visual-viewport", name: "command-search" };
+  if (editable.matches(COMMAND_SEARCH_SELECTOR)) {
+    return {
+      editable,
+      movement: "native",
+      name: "command-search",
+      region: null,
+    };
   }
-  if (editable.closest('[role="dialog"]')) {
-    return { layout: "visual-viewport", name: "dialog-editor" };
+
+  const ownedSurface =
+    regionalSurface(editable, '[role="dialog"]', "dialog-editor") ??
+    regionalSurface(editable, LEFT_PANEL_SELECTOR, "left-sidebar-editor") ??
+    regionalSurface(editable, RIGHT_PANEL_SELECTOR, "right-sidebar-editor") ??
+    regionalSurface(editable, MAIN_CONTENT_REGION_SELECTOR, "main-editor");
+  if (ownedSurface !== null) {
+    return ownedSurface;
   }
-  if (editable.closest("aside.app-shell-left-panel")) {
-    return { layout: "visual-viewport", name: "left-sidebar-editor" };
-  }
-  if (editable.closest('aside[data-app-shell-focus-area="right-panel"]')) {
-    return { layout: "visual-viewport", name: "right-sidebar-editor" };
-  }
-  return { layout: "visual-viewport", name: "editor" };
+
+  return {
+    editable,
+    movement: "native",
+    name: editable.matches(MOBILE_SEARCH_INPUT_SELECTOR)
+      ? "command-search"
+      : "editor",
+    region: null,
+  };
 }
 
 function keyboardViewportEnabled(): boolean {
-  // Keyboard geometry follows device capability, not the most recent pointer.
-  // An iPad trackpad click or a hybrid laptop mouse can still summon the same
-  // software keyboard after focus reaches an editable surface.
+  // Geometry follows device capability rather than the last pointer. An iPad
+  // trackpad or hybrid-laptop mouse can still focus an editor whose software
+  // keyboard opens immediately afterward.
   return hasTouchInputCapability();
 }
 
+function calculateRegionShift(
+  surface: KeyboardSurface,
+  viewport: ViewportSize,
+  currentShift: number,
+): number {
+  if (surface.region === null || surface.movement === "native") {
+    return 0;
+  }
+
+  const visibleBottom = viewport.top + viewport.height;
+  if (surface.movement === "align-region-bottom") {
+    const regionBottom =
+      surface.region.getBoundingClientRect().bottom - currentShift;
+    return Math.min(0, visibleBottom - regionBottom);
+  }
+
+  // getBoundingClientRect includes the active region translation. Remove the
+  // previous shift before calculating the next frame so viewport events do not
+  // compound motion. Regional editors move only if the input itself is hidden.
+  const rect = surface.editable.getBoundingClientRect();
+  const unshiftedTop = rect.top - currentShift;
+  const unshiftedBottom = rect.bottom - currentShift;
+  if (unshiftedBottom <= visibleBottom) {
+    return 0;
+  }
+
+  let shift = visibleBottom - unshiftedBottom;
+  const editableHeight = unshiftedBottom - unshiftedTop;
+  if (editableHeight <= viewport.height) {
+    shift = Math.max(shift, viewport.top - unshiftedTop);
+  }
+  return Math.min(0, shift);
+}
+
 function resetRootScroll(): void {
-  // window.scrollTo is the operation that clears WebKit's layout-viewport
-  // pan. Explicit element assignments cover engines whose scrolling root is
-  // exposed separately and intentionally leave nested app scrollers alone.
+  // This clears WebKit's residual Layout Viewport pan only after a confirmed
+  // keyboard close. Nested renderer scrollers deliberately remain untouched.
   window.scrollTo(0, 0);
   const roots = [
     document.scrollingElement,
@@ -244,14 +276,15 @@ export function installMobileKeyboardViewport(): void {
     return;
   }
   installed = true;
-  installKeyboardShellStyles();
+  installKeyboardRegionStyles();
 
   let baseline = viewportSize();
   let minimumSessionHeight = baseline.height;
   let keyboardWasOpen = false;
   let editorSessionActive = false;
   let activeKeyboardSurface: KeyboardSurface | null = null;
-  let viewportLocked = false;
+  let activeRegionShift = 0;
+  let keyboardSessionArmed = false;
   let restoreTimer: number | null = null;
   let restoreGeneration = 0;
   let restoreInProgress = false;
@@ -265,35 +298,70 @@ export function installMobileKeyboardViewport(): void {
     );
   };
 
-  const setActiveKeyboardSurface = (surface: KeyboardSurface | null): void => {
+  const clearRegion = (region: HTMLElement | null): void => {
+    region?.removeAttribute(ACTIVE_REGION_ATTRIBUTE);
+    region?.style.removeProperty(REGION_SHIFT_PROPERTY);
+  };
+
+  const applyActiveRegion = (viewport: ViewportSize): void => {
+    const surface = activeKeyboardSurface;
+    if (surface === null || surface.region === null) {
+      activeRegionShift = 0;
+      return;
+    }
+
+    const nextShift = calculateRegionShift(
+      surface,
+      viewport,
+      activeRegionShift,
+    );
+    surface.region.setAttribute(ACTIVE_REGION_ATTRIBUTE, "active");
+    surface.region.style.setProperty(REGION_SHIFT_PROPERTY, `${nextShift}px`);
+    activeRegionShift = nextShift;
+  };
+
+  const setActiveKeyboardSurface = (
+    surface: KeyboardSurface | null,
+    viewport?: ViewportSize,
+  ): void => {
+    const previousRegion = activeKeyboardSurface?.region ?? null;
+    const nextRegion = surface?.region ?? null;
+    if (previousRegion !== nextRegion) {
+      clearRegion(previousRegion);
+      activeRegionShift = 0;
+    }
+
     activeKeyboardSurface = surface;
     document.documentElement.setAttribute(
       ACTIVE_SURFACE_ATTRIBUTE,
       surface?.name ?? "none",
     );
+    if (keyboardSessionArmed && viewport !== undefined) {
+      applyActiveRegion(viewport);
+    }
   };
-  setActiveKeyboardSurface(null);
 
-  const setViewportLocked = (
-    locked: boolean,
+  const setKeyboardSessionArmed = (
+    armed: boolean,
     viewport = viewportSize(),
   ): void => {
-    viewportLocked = locked;
-    if (locked) {
-      // Write the initial bounds before enabling the selector so there is no
-      // frame where the renderer's 100vh body is fixed with fallback sizes.
-      setKeyboardShellBounds(
-        viewport,
-        baseline,
-        activeKeyboardSurface ?? DEFAULT_KEYBOARD_SURFACE,
-      );
-      document.documentElement.setAttribute(VIEWPORT_LOCK_ATTRIBUTE, "true");
+    keyboardSessionArmed = armed;
+    document.documentElement.setAttribute(
+      KEYBOARD_SESSION_ATTRIBUTE,
+      armed ? "true" : "false",
+    );
+    if (armed) {
+      applyActiveRegion(viewport);
       return;
     }
 
-    document.documentElement.setAttribute(VIEWPORT_LOCK_ATTRIBUTE, "false");
-    clearKeyboardShellBounds();
+    clearRegion(activeKeyboardSurface?.region ?? null);
+    activeRegionShift = 0;
   };
+
+  setKeyboardOpen(false);
+  setKeyboardSessionArmed(false);
+  setActiveKeyboardSurface(null);
 
   const stopViewportAnimationWatch = (): void => {
     viewportAnimationGeneration += 1;
@@ -305,8 +373,7 @@ export function installMobileKeyboardViewport(): void {
 
   const cancelRestore = (): void => {
     // A timer may already have handed work to requestAnimationFrame. Advancing
-    // the generation also invalidates those queued frames when a new input is
-    // focused or the keyboard begins changing size again.
+    // the generation invalidates those queued frames when focus changes.
     restoreGeneration += 1;
     restoreInProgress = false;
     if (restoreTimer !== null) {
@@ -316,8 +383,7 @@ export function installMobileKeyboardViewport(): void {
   };
 
   const restoreAfterAnimation = (): void => {
-    // A plain focus transition must never move the page. Root normalization is
-    // only valid after this session actually observed keyboard occlusion.
+    // A plain hardware-keyboard focus must never normalize document scroll.
     if (!keyboardWasOpen || restoreInProgress) {
       return;
     }
@@ -339,15 +405,12 @@ export function installMobileKeyboardViewport(): void {
         current.height - minimumSessionHeight <
         KEYBOARD_HEIGHT_THRESHOLD_PX
       ) {
-        // The close animation has not expanded far enough yet. Release this
-        // attempt and let the next viewport sample schedule a fresh one.
         restoreInProgress = false;
         return;
       }
 
-      // Two frames let the final Visual Viewport resize update the layout
-      // before clearing Safari's residual root offset. Each frame rechecks the
-      // generation so a newly focused editor cannot be moved by stale work.
+      // Two frames allow WebKit's final Visual Viewport resize to settle before
+      // clearing its residual root pan. Every frame rechecks the generation.
       window.requestAnimationFrame(() => {
         if (generation !== restoreGeneration || !keyboardWasOpen) {
           if (generation === restoreGeneration) {
@@ -368,16 +431,16 @@ export function installMobileKeyboardViewport(): void {
           baseline = viewportSize();
           minimumSessionHeight = baseline.height;
           const surface = keyboardSurface(document.activeElement);
-          setActiveKeyboardSurface(surface);
           editorSessionActive = surface !== null;
+          setActiveKeyboardSurface(surface);
           if (editorSessionActive) {
-            // iOS can dismiss its keyboard without blurring the editor. Keep
-            // the viewport contract armed so reopening the keyboard does not
-            // depend on another focus event.
-            setViewportLocked(true, baseline);
+            // iOS may dismiss its keyboard without blurring. Keep the semantic
+            // region armed at zero shift so a reopen needs no new focus event.
+            setKeyboardSessionArmed(true, baseline);
           } else {
             stopViewportAnimationWatch();
-            setViewportLocked(false);
+            setKeyboardSessionArmed(false);
+            setActiveKeyboardSurface(null);
           }
           resetRootScroll();
         });
@@ -387,9 +450,9 @@ export function installMobileKeyboardViewport(): void {
 
   function handleViewportChange(): void {
     if (!keyboardViewportEnabled()) {
-      if (viewportLocked) {
+      if (keyboardSessionArmed) {
         stopViewportAnimationWatch();
-        setViewportLocked(false);
+        setKeyboardSessionArmed(false);
       }
       setActiveKeyboardSurface(null);
       return;
@@ -400,37 +463,29 @@ export function installMobileKeyboardViewport(): void {
       Math.abs(current.layoutWidth - baseline.layoutWidth) >
       VIEWPORT_WIDTH_EPSILON_PX
     ) {
-      // Rotation and split-view resizing establish a new non-keyboard
-      // baseline instead of being mistaken for vertical keyboard occlusion.
+      // Rotation and Split View establish a new baseline rather than keyboard
+      // occlusion. A still-open session continues from that new geometry.
       cancelRestore();
       baseline = current;
       minimumSessionHeight = current.height;
       if (keyboardWasOpen) {
-        if (viewportLocked) {
-          setKeyboardShellBounds(
-            current,
-            baseline,
-            activeKeyboardSurface ?? DEFAULT_KEYBOARD_SURFACE,
-          );
+        if (keyboardSessionArmed) {
+          applyActiveRegion(current);
         }
         return;
       }
     }
 
-    if (viewportLocked) {
-      setKeyboardShellBounds(
-        current,
-        baseline,
-        activeKeyboardSurface ?? DEFAULT_KEYBOARD_SURFACE,
-      );
+    if (keyboardSessionArmed) {
+      applyActiveRegion(current);
     }
 
     if (!editorSessionActive && !keyboardWasOpen) {
       baseline = current;
       minimumSessionHeight = current.height;
-      if (viewportLocked) {
+      if (keyboardSessionArmed) {
         stopViewportAnimationWatch();
-        setViewportLocked(false);
+        setKeyboardSessionArmed(false);
       }
       setActiveKeyboardSurface(null);
       return;
@@ -449,9 +504,8 @@ export function installMobileKeyboardViewport(): void {
       keyboardWasOpen &&
       current.height - minimumSessionHeight >= KEYBOARD_HEIGHT_THRESHOLD_PX
     ) {
-      // Keep the shell pinned until WebKit has finished expanding the Visual
-      // Viewport. Removing the constraint during the close animation exposes
-      // the renderer's 100vh shell and causes the same disappearing jump.
+      // The active region continues following viewport frames until WebKit has
+      // finished expanding; cleanup then removes only its semantic marker.
       restoreAfterAnimation();
     }
   }
@@ -463,13 +517,13 @@ export function installMobileKeyboardViewport(): void {
 
     const trackFrame = (): void => {
       viewportAnimationFrame = null;
-      if (generation !== viewportAnimationGeneration || !viewportLocked) {
+      if (generation !== viewportAnimationGeneration || !keyboardSessionArmed) {
         return;
       }
 
-      // Some WebKit releases coalesce Visual Viewport events until late in the
-      // keyboard animation. Sampling during the bounded transition window
-      // keeps the app shell aligned even when no resize/scroll event arrives.
+      // Some WebKit releases coalesce resize/scroll events until late in the
+      // keyboard animation. Bounded frame sampling keeps only the active region
+      // synchronized without touching the complete app shell.
       handleViewportChange();
       if (performance.now() < deadline) {
         viewportAnimationFrame = window.requestAnimationFrame(trackFrame);
@@ -489,17 +543,12 @@ export function installMobileKeyboardViewport(): void {
 
       cancelRestore();
       editorSessionActive = true;
-      setActiveKeyboardSurface(surface);
       const current = viewportSize();
-      // Visibility is focus-driven, not threshold-driven. A hardware keyboard
-      // leaves these bounds equal to the normal viewport, while a software
-      // keyboard can now shrink them from its very first animation step.
-      setViewportLocked(true, current);
+      setActiveKeyboardSurface(surface);
+      // Arm from the first animation frame; waiting for the keyboard threshold
+      // creates the exact gap where a bottom composer disappears.
+      setKeyboardSessionArmed(true, current);
       if (!keyboardWasOpen) {
-        // Keep the last no-editor height as the keyboard baseline. WebKit may
-        // dispatch focusin after the first Visual Viewport animation step; if
-        // that already-shortened height became the baseline, the remaining
-        // animation could stay below the detection threshold forever.
         minimumSessionHeight = Math.min(baseline.height, current.height);
         handleViewportChange();
       }
@@ -515,12 +564,11 @@ export function installMobileKeyboardViewport(): void {
         return;
       }
 
-      // Focus can move between composer controls in the same event turn.
-      // Check the settled active element before ending the keyboard session.
+      // A settled focus can move between semantic regions in the same turn.
       window.requestAnimationFrame(() => {
         const surface = keyboardSurface(document.activeElement);
         if (surface !== null) {
-          setActiveKeyboardSurface(surface);
+          setActiveKeyboardSurface(surface, viewportSize());
           return;
         }
         editorSessionActive = false;
@@ -530,7 +578,7 @@ export function installMobileKeyboardViewport(): void {
         }
 
         stopViewportAnimationWatch();
-        setViewportLocked(false);
+        setKeyboardSessionArmed(false);
         setActiveKeyboardSurface(null);
         baseline = viewportSize();
         minimumSessionHeight = baseline.height;
@@ -541,7 +589,7 @@ export function installMobileKeyboardViewport(): void {
 
   const handleViewportEvent = (): void => {
     handleViewportChange();
-    if (viewportLocked) {
+    if (keyboardSessionArmed) {
       startViewportAnimationWatch();
     }
   };

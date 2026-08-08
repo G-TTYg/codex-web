@@ -47,6 +47,14 @@ function countOccurrences(text, needle) {
   return count;
 }
 
+function assertOneOccurrence(filePath, anchor, label) {
+  const count = countOccurrences(readText(filePath), anchor);
+  if (count !== 1) {
+    throw new Error(`Expected one ${label} in ${filePath}, found ${count}.`);
+  }
+  console.log(`Validated ${label}`);
+}
+
 function replaceOnce(filePath, before, after, label) {
   const text = readText(filePath);
   if (text.includes(after)) {
@@ -280,6 +288,14 @@ const appInitialPath = findAssetFile(
     text.includes("type:`connect-app-host`") &&
     text.includes("networkOverrideFunc:"),
   /^app-initial-.*\.js$/,
+);
+// Region-scoped keyboard motion depends on this existing renderer boundary.
+// Fail closed if Desktop removes or duplicates it instead of falling back to
+// moving the complete shell again.
+assertOneOccurrence(
+  appInitialPath,
+  '"data-app-shell-main-content-layout":',
+  "main content keyboard region",
 );
 // Touch context actions use explicit renderer-owned buttons. The upstream
 // Radix trigger otherwise reserves a stationary scroll start for a delayed
