@@ -212,10 +212,9 @@ someone with access to the web UI may be able to:
   - inline images
   - editor sidepanel
   - transcription
-  - a mobile and portrait-tablet interaction layer with explicit per-item
-    renderer-native inline actions, touch-sized presentation of the original
-    context actions, native scrolling, touch-disabled dragging, and
-    keyboard-dismiss-safe search
+  - a mobile and portrait-tablet interaction layer with renderer-owned inline
+    menu controls, the original renderer context menus, native scrolling,
+    touch-disabled dragging, and keyboard-dismiss-safe search
 
 The platform build copies Computer Use and native-resource assets only from the
 same official Desktop Resources directory used for extraction. Electron-native

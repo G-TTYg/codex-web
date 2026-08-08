@@ -86,16 +86,17 @@ Outside-tap dismissal observes the real underlying target after a complete
 click and does not consume its pointer sequence, so links and controls remain
 first-tap operable while a drawer is open.
 `src/browser/mobile-interactions.ts` owns a separate mobile interaction layer
-instead of emulating Desktop gestures. The semantic patcher marks renderer
-context-menu owners and exposes their already-localized action definitions to
-the browser layer. Existing renderer-owned hover actions are revealed in place
-as inline row controls on touch layouts, preserving their original callbacks
-and menu implementations. A context-only row receives a visually embedded
-row-end fallback, whose touch-sized sheet invokes the same renderer action
-callbacks instead of duplicating commands. Renderer-owned pointer menus use
-the same bottom-sheet presentation. Action controls listen only for completed
-clicks and permit `pan-y`, so a normal pointer sequence remains native
-scrolling or the row's primary action.
+instead of emulating Desktop gestures. Electron native menus cannot render in a
+browser, so the semantic patcher makes codex-web use the shared renderer's
+existing Radix context-menu branch while leaving Desktop on its native branch.
+Sidebar thread actions live in the renderer's existing trailing action rail and
+open that exact context-menu root; project and other renderer-owned menu
+controls are revealed in place. The file tree enables its own built-in row menu
+button. No browser-owned action portal, copied menu, or menu-style override is
+used, so layout, focus, localization, callbacks, and animation remain owned by
+the original renderer components. Action controls listen only for completed
+clicks and permit `pan-y`, so a normal pointer sequence remains native scrolling
+or the row's primary action.
 The shared semantic patcher removes Radix touch long-press menus, disables the
 file tree's custom touch-drag activator, and makes dnd-kit's PointerSensor reject
 every non-mouse pointer without consuming its event. HTML drag starts are also

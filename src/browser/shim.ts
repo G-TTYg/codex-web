@@ -113,6 +113,7 @@ type ElectronShimState = {
   initialRoute?: string;
   initialSidebarState?: boolean;
   closeSidebar?: () => void;
+  openContextMenuFromButton?: (button: HTMLElement) => void;
   onMemoryNavigationChanged?: (navigation: MemoryNavigationChange) => void;
   overrideAdapter?: {
     getGateOverride?: (

@@ -275,9 +275,9 @@ const appInitialPath = findAssetFile(
     text.includes("networkOverrideFunc:"),
   /^app-initial-.*\.js$/,
 );
-// Mobile actions have an explicit button and bottom-sheet presentation. The
-// upstream Radix trigger otherwise reserves the same touch sequence for a
-// delayed context menu, making a stationary scroll start ambiguous.
+// Touch context actions use explicit renderer-owned buttons. The upstream
+// Radix trigger otherwise reserves a stationary scroll start for a delayed
+// context menu, making vertical panning ambiguous.
 replaceOneOfOnce(
   appInitialPath,
   [
@@ -296,52 +296,84 @@ replaceOneOfOnce(
   ],
   "context-menu touch long press disabled",
 );
-// The shared context-menu abstraction knows which renderer elements actually
-// own secondary actions. Mark both its native and browser branches so the
-// browser-owned mobile action layer can add one discoverable affordance without
-// guessing from fingerprinted CSS classes.
+// Electron's native menu cannot render in a browser. Keep Desktop on that path,
+// but make codex-web use the component's existing Radix branch on every input
+// type so mouse and touch see the same renderer-owned menu and animation.
 replaceOnce(
   appInitialPath,
-  "t[43]===P?n=t[44]:(n={onContextMenu:P},t[43]=P,t[44]=n)",
-  't[43]===P?n=t[44]:(n={"data-codex-context-target":`true`,onContextMenu:P},t[43]=P,t[44]=n)',
-  "native context-menu mobile target",
+  "d=!a&&window.electronBridge?.showContextMenu!=null",
+  "d=!a&&window.electronBridge?.showContextMenu!=null&&!window.__ELECTRON_SHIM__",
+  "browser renderer context-menu branch",
 );
+// Mark only the active Radix trigger. A renderer-owned inline button can then
+// open that exact context-menu root without copying its items or callbacks.
 replaceOnce(
   appInitialPath,
   "t[48]===P?e=t[49]:(e={onContextMenu:P},t[48]=P,t[49]=e)",
   't[48]===P?e=t[49]:(e={"data-codex-context-target":`true`,onContextMenu:P},t[48]=P,t[49]=e)',
-  "browser context-menu mobile target",
+  "browser context-menu trigger target",
 );
-// Native Electron menus cannot render inside a browser. An explicit mobile
-// action request receives the already-localized renderer items and selection
-// callback before the native bridge is invoked, so touch UI never needs to
-// synthesize a secondary click or duplicate renderer action definitions.
+// Sidebar thread rows already own a trailing action rail. Add one mobile-only
+// entry to that rail and forward the completed click event through the existing
+// action renderer so it can open the marked Radix trigger at the button.
 replaceOneOfOnce(
   appInitialPath,
   [
     {
       before:
-        "let t=c?await C():x();if(t.length===0)return;let n=(await window.electronBridge?.showContextMenu?.(Uyt(t)))?.id;n&&D(n,t)",
+        '"aria-label":e.ariaLabel,onClick:t=>{t.stopPropagation(),e.onClick()},onPointerDown:Ezc',
       after:
-        "let t=c?await C():x();if(t.length===0)return;let o=e.nativeEvent?.codexMobileActionRequest??e.codexMobileActionRequest;if(typeof o==`function`){o(t,D);return}let n=(await window.electronBridge?.showContextMenu?.(Uyt(t)))?.id;n&&D(n,t)",
+        '"aria-label":e.ariaLabel,"aria-haspopup":e.ariaHasPopup,onClick:t=>{t.stopPropagation(),e.onClick(t)},onPointerDown:Ezc',
     },
     {
       before:
-        "let t=c?await C():x();if(t.length===0)return;let n=(await window.electronBridge?.showContextMenu?.(Vyt(t)))?.id;n&&D(n,t)",
+        '"aria-label":e.ariaLabel,onClick:t=>{t.stopPropagation(),e.onClick()},onPointerDown:zzc',
       after:
-        "let t=c?await C():x();if(t.length===0)return;let o=e.nativeEvent?.codexMobileActionRequest??e.codexMobileActionRequest;if(typeof o==`function`){o(t,D);return}let n=(await window.electronBridge?.showContextMenu?.(Vyt(t)))?.id;n&&D(n,t)",
+        '"aria-label":e.ariaLabel,"aria-haspopup":e.ariaHasPopup,onClick:t=>{t.stopPropagation(),e.onClick(t)},onPointerDown:zzc',
     },
   ],
-  "native context-menu mobile action bridge",
+  "renderer row-action click event",
 );
-// The file tree owns a separate context menu and a separate long-press drag
-// implementation. Expose its actionable rows to the same mobile UI and remove
-// only the touch activator; mouse drag and right click remain upstream-owned.
+replaceOneOfOnce(
+  appInitialPath,
+  [
+    {
+      before:
+        "{archive:n,pinAction:r}=e,i=Ju();if(n==null&&r==null)return null;let a;",
+      after: "{archive:n,pinAction:r}=e,i=Ju();let a;",
+    },
+    {
+      before:
+        "{archive:n,pinAction:r}=e,i=Zu();if(n==null&&r==null)return null;let a;",
+      after: "{archive:n,pinAction:r}=e,i=Zu();let a;",
+    },
+  ],
+  "mobile thread action rail availability",
+);
+replaceOneOfOnce(
+  appInitialPath,
+  [
+    {
+      before: "actions:[...a,...o],className:SLc",
+      after:
+        'actions:[...a,...o,{id:`thread-context-action`,ariaHasPopup:`menu`,ariaLabel:i.formatMessage({id:`codex.mobile.threadActions`,defaultMessage:`More options`,description:`Opens the thread context menu from its inline mobile action`}),buttonClassName:`codex-mobile-context-action`,icon:(0,b0.jsxs)(`svg`,{"aria-hidden":!0,className:`icon-xs`,viewBox:`0 0 21 21`,children:[(0,b0.jsx)(`circle`,{cx:4.7,cy:10.5,r:1.5,fill:`currentColor`}),(0,b0.jsx)(`circle`,{cx:10.2,cy:10.5,r:1.5,fill:`currentColor`}),(0,b0.jsx)(`circle`,{cx:15.7,cy:10.5,r:1.5,fill:`currentColor`})]}),onClick:e=>window.__ELECTRON_SHIM__?.openContextMenuFromButton?.(e.currentTarget)}],className:SLc',
+    },
+    {
+      before: "actions:[...a,...o],className:FLc",
+      after:
+        'actions:[...a,...o,{id:`thread-context-action`,ariaHasPopup:`menu`,ariaLabel:i.formatMessage({id:`codex.mobile.threadActions`,defaultMessage:`More options`,description:`Opens the thread context menu from its inline mobile action`}),buttonClassName:`codex-mobile-context-action`,icon:(0,b0.jsxs)(`svg`,{"aria-hidden":!0,className:`icon-xs`,viewBox:`0 0 21 21`,children:[(0,b0.jsx)(`circle`,{cx:4.7,cy:10.5,r:1.5,fill:`currentColor`}),(0,b0.jsx)(`circle`,{cx:10.2,cy:10.5,r:1.5,fill:`currentColor`}),(0,b0.jsx)(`circle`,{cx:15.7,cy:10.5,r:1.5,fill:`currentColor`})]}),onClick:e=>window.__ELECTRON_SHIM__?.openContextMenuFromButton?.(e.currentTarget)}],className:FLc',
+    },
+  ],
+  "mobile thread context-menu action",
+);
+// The file tree has its own renderer-native row action lane and menu button.
+// Enable that button directly on mobile, while retaining mouse-only dragging
+// and the existing right-click configuration on Desktop.
 replaceOnce(
   appInitialPath,
-  "targetPath:P}),key:n,onContextMenu:S||u?",
-  'targetPath:P}),key:n,"data-codex-context-target":S?`true`:void 0,onContextMenu:S||u?',
-  "file-tree mobile context target",
+  "Le=Ie===`both`||Ie===`button`,Re=e?.contextMenu?.buttonVisibility??`when-needed`,ze=Ie===`both`||Ie===`right-click`",
+  "Le=Ie===`both`||Ie===`button`||document.documentElement.getAttribute(`data-codex-mobile-ui`)===`true`,Re=document.documentElement.getAttribute(`data-codex-mobile-ui`)===`true`?`always`:e?.contextMenu?.buttonVisibility??`when-needed`,ze=Ie===`both`||Ie===`right-click`",
+  "file-tree mobile native menu button",
 );
 replaceOnce(
   appInitialPath,

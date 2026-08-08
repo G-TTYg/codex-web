@@ -83,9 +83,10 @@ run the patcher against both pristine sources. If only minified identifiers
 differ, keep the verified forms as alternatives inside the same transformation;
 do not fork the behavior or create a second platform patcher.
 
-The current transforms cover routing/history, mobile sidebar behavior,
-context-target markers, touch long-press and drag rejection, ProseMirror touch
-input, Safari-compatible
+The current transforms cover routing/history, mobile sidebar behavior, the
+renderer context-menu branch and inline menu entries, file-tree native menu
+buttons, touch long-press and drag rejection, ProseMirror touch input,
+Safari-compatible
 syntax-highlighter regular expressions, local file URLs, Statsig network
 isolation, URL prompt prefill, browser titles, PWA/preload markup, and Sentry
 disablement in renderer, worker, and shell bundles.
@@ -134,9 +135,10 @@ Then verify:
 - the narrow-viewport and portrait touch-tablet left and right overlay drawers,
   outside-tap dismissal, unchanged application-menu/header controls, opaque
   panel surfaces, touch composer, keyboard-dismiss-safe search, explicit
-  renderer-native inline row actions, original context action callbacks in
-  touch-sized sheets where no native button exists, first-tap links beneath an
-  open drawer, external-link fallback,
+  renderer-owned inline row menu buttons, original Radix context menus with
+  their unchanged positioning and animation, absence of browser-owned floating
+  action portals or copied action sheets, first-tap links beneath an open
+  drawer, external-link fallback,
   native Projects/file-tree scrolling from nested row controls, absence of
   touch long-press menus and touch dragging, hardware right click, and mouse
   dragging work;
