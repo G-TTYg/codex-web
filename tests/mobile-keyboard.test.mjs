@@ -326,6 +326,7 @@ const keyboardAttribute = "data-codex-software-keyboard";
 const activeSurfaceAttribute = "data-codex-active-keyboard-surface";
 const activeRegionAttribute = "data-codex-keyboard-region";
 const composerSelector = '[data-codex-keyboard-surface="composer"]';
+const projectSearchSelector = '[data-codex-keyboard-surface="project-search"]';
 const mainRegionSelector = "[data-app-shell-main-content-layout]";
 const leftRegionSelector = "aside.app-shell-left-panel";
 const rightRegionSelector = 'aside[data-app-shell-focus-area="right-panel"]';
@@ -587,6 +588,45 @@ test("mobile keyboard viewport coordinator", async (suite) => {
   );
 
   await suite.test(
+    "moves the complete composer project picker above the settled keyboard",
+    async () => {
+      const harness = await createHarness();
+      const projectSearch = harness.input([commandSearchSelector], {
+        bottom: 550,
+        top: 510,
+      });
+      const projectRoot = harness.region(projectSearchSelector, projectSearch);
+      const popover = harness.region(dialogRegionSelector, projectRoot);
+      popover.rect = { bottom: 760, top: 500 };
+
+      harness.focus(projectSearch);
+      harness.viewport.height = 450;
+      harness.viewportChanged();
+      settle(harness);
+
+      assert.equal(
+        harness.root.getAttribute(activeSurfaceAttribute),
+        "project-search",
+      );
+      assert.equal(shiftOf(popover), "-310px");
+      assert.equal(shiftOf(projectRoot), "");
+      assert.equal(popover.getBoundingClientRect().bottom, 450);
+
+      Object.assign(harness.viewport, { height: 430, offsetTop: 20 });
+      harness.viewportChanged("scroll");
+      settle(harness);
+      assert.equal(shiftOf(popover), "-310px");
+      assert.equal(popover.style.mutations.length, 1);
+
+      Object.assign(harness.viewport, { height: 768, offsetTop: 0 });
+      harness.viewportChanged();
+      settle(harness);
+      assert.equal(shiftOf(popover), "");
+      assert.equal(popover.getAttribute(activeRegionAttribute), null);
+    },
+  );
+
+  await suite.test(
     "retains the pre-focus baseline when WebKit resizes first",
     async () => {
       const harness = await createHarness();
@@ -699,6 +739,7 @@ test("mobile keyboard viewport coordinator", async (suite) => {
 
       assert.match(patcher, /stable prompt editor keyboard surface attributes/);
       assert.match(patcher, /stable prompt editor DOM events/);
+      assert.match(patcher, /project picker keyboard surface/);
       assert.match(patcher, /touch-safe composer mount focus/);
       assert.match(patcher, /shouldAutoFocusComposer/);
       assert.match(shim, /!hasTouchInputCapability\(\)/);

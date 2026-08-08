@@ -751,6 +751,29 @@ replaceOneOfOnce(
   "stable prompt editor DOM events",
 );
 
+// The composer project picker uses the same cmdk primitive as top command
+// search, but its renderer-owned popover is anchored beside the bottom prompt.
+// Mark only this semantic search root so mobile keyboard handling can move the
+// complete native popover without changing other command/search surfaces.
+replaceOneOfOnce(
+  appInitialPath,
+  [
+    {
+      before:
+        "g=(0,jY.jsxs)(Mq.Root,{label:f,children:[p,h]}),t[14]=f,t[15]=p,t[16]=h,t[17]=g",
+      after:
+        'g=(0,jY.jsxs)(Mq.Root,{"data-codex-keyboard-surface":`project-search`,label:f,children:[p,h]}),t[14]=f,t[15]=p,t[16]=h,t[17]=g',
+    },
+    {
+      before:
+        "g=(0,jY.jsxs)(Aq.Root,{label:f,children:[p,h]}),t[14]=f,t[15]=p,t[16]=h,t[17]=g",
+      after:
+        'g=(0,jY.jsxs)(Aq.Root,{"data-codex-keyboard-surface":`project-search`,label:f,children:[p,h]}),t[14]=f,t[15]=p,t[16]=h,t[17]=g',
+    },
+  ],
+  "project picker keyboard surface",
+);
+
 // Desktop requests a primary-composer focus when a route mounts. On touch
 // devices the shim declines only that request, avoiding an unsolicited
 // software keyboard without changing normal tap, paste, or keyboard focus.

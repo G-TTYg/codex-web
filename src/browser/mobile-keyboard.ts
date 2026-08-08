@@ -42,9 +42,13 @@ const KEYBOARD_HEIGHT_THRESHOLD_PX = 80;
 const VIEWPORT_WIDTH_EPSILON_PX = 2;
 const VIEWPORT_SETTLE_DELAY_MS = 240;
 const COMPOSER_SELECTOR = '[data-codex-keyboard-surface="composer"]';
+const PROJECT_SEARCH_SELECTOR =
+  '[data-codex-keyboard-surface="project-search"]';
 const FILE_TREE_SEARCH_SELECTOR = "[data-file-tree-search-input]";
 const TEXT_FILE_SEARCH_SELECTOR = "input[data-search]";
 const COMMAND_SEARCH_SELECTOR = '[cmdk-input], [role="searchbox"]';
+const PROJECT_POPOVER_REGION_SELECTOR =
+  '[role="dialog"], [data-radix-popper-content-wrapper]';
 const MAIN_CONTENT_REGION_SELECTOR = "[data-app-shell-main-content-layout]";
 const LEFT_PANEL_SELECTOR = "aside.app-shell-left-panel";
 const RIGHT_PANEL_SELECTOR = 'aside[data-app-shell-focus-area="right-panel"]';
@@ -64,10 +68,15 @@ type ViewportSize = {
   top: number;
 };
 
-type KeyboardMovement = "align-region-bottom" | "ensure-visible" | "native";
+type KeyboardMovement =
+  | "align-region-bottom"
+  | "ensure-region-visible"
+  | "ensure-visible"
+  | "native";
 
 type KeyboardSurfaceName =
   | "composer"
+  | "project-search"
   | "file-tree-search"
   | "command-search"
   | "text-file-search"
@@ -162,6 +171,18 @@ function keyboardSurface(target: EventTarget | null): KeyboardSurface | null {
       region,
     };
   }
+  if (editable.closest(PROJECT_SEARCH_SELECTOR)) {
+    const region = closestHTMLElement(
+      editable,
+      PROJECT_POPOVER_REGION_SELECTOR,
+    );
+    return {
+      editable,
+      movement: region === null ? "native" : "ensure-region-visible",
+      name: "project-search",
+      region,
+    };
+  }
   if (editable.matches(FILE_TREE_SEARCH_SELECTOR)) {
     return {
       editable,
@@ -235,7 +256,11 @@ function calculateRegionShift(
 
   // The previous owner correction is cleared before this function is called,
   // so this rectangle is always the renderer's unshifted geometry.
-  const rect = surface.editable.getBoundingClientRect();
+  const rect = (
+    surface.movement === "ensure-region-visible"
+      ? surface.region
+      : surface.editable
+  ).getBoundingClientRect();
   if (rect.bottom <= visibleBottom) {
     return 0;
   }

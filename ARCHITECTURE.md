@@ -181,7 +181,10 @@ hardware-keyboard focus. The prompt's unique
 Only that center region follows the keyboard edge, leaving the application
 header and both sidebars stationary. Ordinary center editors, dialogs, and
 non-search sidebar editors move their own region only far enough to expose the
-focused input. Top command search and file-tree search keep native Visual
+focused input. The composer project picker is marked separately from the cmdk
+primitive shared with top search: when its search field opens the software
+keyboard, the complete renderer-owned popover moves above the visible viewport
+edge as one unit. Top command search and file-tree search keep native Visual
 Viewport behavior; a visible text-file search receives a zero regional shift.
 
 Visual Viewport changes are settle-debounced into a one-way transaction. The
