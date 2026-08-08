@@ -105,6 +105,7 @@ export function installMobileKeyboardViewport(): void {
   let keyboardWasOpen = false;
   let editorSessionActive = false;
   let restoreTimer: number | null = null;
+  let restoreGeneration = 0;
 
   const setKeyboardOpen = (open: boolean): void => {
     document.documentElement.setAttribute(
@@ -114,6 +115,10 @@ export function installMobileKeyboardViewport(): void {
   };
 
   const cancelRestore = (): void => {
+    // A timer may already have handed work to requestAnimationFrame. Advancing
+    // the generation also invalidates those queued frames when a new input is
+    // focused or the keyboard begins changing size again.
+    restoreGeneration += 1;
     if (restoreTimer !== null) {
       window.clearTimeout(restoreTimer);
       restoreTimer = null;
@@ -121,21 +126,39 @@ export function installMobileKeyboardViewport(): void {
   };
 
   const restoreAfterAnimation = (): void => {
+    // A plain focus transition must never move the page. Root normalization is
+    // only valid after this session actually observed keyboard occlusion.
+    if (!keyboardWasOpen) {
+      return;
+    }
+
     cancelRestore();
+    const generation = restoreGeneration;
     restoreTimer = window.setTimeout(() => {
       restoreTimer = null;
+      if (generation !== restoreGeneration || !keyboardWasOpen) {
+        return;
+      }
+
       const current = viewportSize();
       if (
-        keyboardWasOpen &&
-        current.height - minimumSessionHeight < KEYBOARD_HEIGHT_THRESHOLD_PX
+        current.height - minimumSessionHeight <
+        KEYBOARD_HEIGHT_THRESHOLD_PX
       ) {
         return;
       }
 
       // Two frames let the final Visual Viewport resize update the layout
-      // before clearing Safari's residual root offset.
+      // before clearing Safari's residual root offset. Each frame rechecks the
+      // generation so a newly focused editor cannot be moved by stale work.
       window.requestAnimationFrame(() => {
+        if (generation !== restoreGeneration || !keyboardWasOpen) {
+          return;
+        }
         window.requestAnimationFrame(() => {
+          if (generation !== restoreGeneration || !keyboardWasOpen) {
+            return;
+          }
           resetRootScroll();
           keyboardWasOpen = false;
           setKeyboardOpen(false);
@@ -156,6 +179,7 @@ export function installMobileKeyboardViewport(): void {
     if (Math.abs(current.width - baseline.width) > VIEWPORT_WIDTH_EPSILON_PX) {
       // Rotation and split-view resizing establish a new non-keyboard
       // baseline instead of being mistaken for vertical keyboard occlusion.
+      cancelRestore();
       baseline = current;
       minimumSessionHeight = current.height;
       if (keyboardWasOpen) {
