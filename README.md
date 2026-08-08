@@ -69,9 +69,11 @@ npm run server
 ```
 
 `npm install` runs the platform-aware build. macOS and Linux download the pinned
-official macOS desktop archive as the renderer source. Windows requires the
-pinned `OpenAI.Codex` Microsoft Store package and extracts its installed ASAR.
-all three hosts download and verify the pinned CLI for their OS and architecture.
+official macOS desktop archive as the renderer source. Windows uses an already
+installed exact `OpenAI.Codex` Microsoft Store package when available;
+otherwise it downloads the pinned x64 or arm64 Store MSIX and extracts it into
+ignored project state. all three hosts download and verify the pinned CLI for
+their OS and architecture.
 
 for development, install dependencies without the lifecycle build and invoke
 the same build entry explicitly:
@@ -84,12 +86,19 @@ npm run server
 
 set `HOSTED_CODEX_APP_ZIP` to an existing official archive or `CODEX_CLI_PATH`
 to an explicit CLI when an override is required. `CODEX_WEB_DOWNLOAD_PROXY`
-routes managed CLI downloads through a proxy on every host.
+routes managed CLI downloads on every host and managed Windows Desktop MSIX
+downloads through a proxy.
 
 ### Windows Desktop source overrides
 
-the ordinary Windows entry remains `npm run build`. direct invocation of its
-internal adapter is only needed to test a non-default Desktop source:
+the ordinary Windows entry remains `npm run build`. it prefers an exact
+installed Appx, then uses the architecture-specific pinned MSIX. the historical
+MSIX URL may use a byte-preserving release mirror as transport, but the mirror
+is not trusted: the build requires the Microsoft Store Catalog size and
+SHA-256, a valid Windows package signature from the pinned Store publisher,
+the exact Appx identity/version/architecture, and the pinned ASAR, brand, and
+Electron metadata before accepting it. direct invocation of the internal
+adapter is only needed to test a non-default Desktop source:
 
 ```powershell
 # Build from an explicitly supplied official ASAR.
@@ -106,6 +115,11 @@ powershell -File .\scripts\windows\setup.ps1 `
 powershell -File .\scripts\windows\setup.ps1 `
   -DownloadProxy http://127.0.0.1:7897
 ```
+
+Verified MSIX archives are cached under `scratch/downloads/`; their atomically
+extracted package trees stay under `scratch/desktop-packages/`. both paths are
+ignored and must not be committed. Windows never substitutes a newer installed
+or remotely discovered Store version for the manifest pin.
 
 ### sign in
 

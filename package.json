@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "files": [
     "README.md",
+    "scripts/managed-download.mjs",
     "scripts/managed-runtime.mjs",
     "scripts/run-server.mjs",
     "scripts/runtime-versions.json",
@@ -27,6 +28,7 @@
     "preserver": "npm run build:server && npm run build:browser",
     "test:mobile-layout": "node --test ./tests/mobile-layout.test.mjs",
     "test:mobile-keyboard": "node --test ./tests/mobile-keyboard.test.mjs",
+    "test:windows-desktop": "node --test ./tests/windows-managed-desktop.test.mjs",
     "server": "node scripts/run-server.mjs"
   },
   "repository": "git@github.com:0xcaff/codex-web.git",

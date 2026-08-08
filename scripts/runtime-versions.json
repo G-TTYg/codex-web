@@ -6,9 +6,24 @@
   },
   "windowsDesktop": {
     "packageIdentity": "OpenAI.Codex",
+    "packagePublisher": "CN=50BDFD77-8903-4850-9FFE-6E8522F64D5B",
     "packageVersion": "26.730.8199.0",
     "asarVersion": "26.730.61639",
-    "electronVersion": "42.3.0"
+    "electronVersion": "42.3.0",
+    "artifacts": {
+      "x64": {
+        "fileName": "OpenAI.Codex_26.730.8199.0_x64__2p2nqsd0c76g0.Msix",
+        "url": "https://github.com/Wangnov/codex-app-mirror/releases/download/codex-app-26.730.61639/OpenAI.Codex_26.730.8199.0_x64__2p2nqsd0c76g0.Msix",
+        "size": 740803123,
+        "integrity": "sha256-omoC6kgDl8Pn6PAMOt6roloYFmvVKvVWZkRaYWLpqXQ="
+      },
+      "arm64": {
+        "fileName": "OpenAI.Codex_26.730.8199.0_arm64__2p2nqsd0c76g0.Msix",
+        "url": "https://github.com/Wangnov/codex-app-mirror/releases/download/codex-app-26.730.61639/OpenAI.Codex_26.730.8199.0_arm64__2p2nqsd0c76g0.Msix",
+        "size": 735962198,
+        "integrity": "sha256-glRyerKf/+TY/p2J2DLSVTH2EqmvJzwHkimAnxj+ZCQ="
+      }
+    }
   },
   "codexCli": {
     "version": "0.147.0-alpha.1.2",

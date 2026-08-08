@@ -8,9 +8,11 @@ code is extracted at install time and is not stored in this repository.
 
 ```mermaid
 flowchart LR
-  W["Pinned Windows Store app.asar"] --> E["Selective ASAR extractor"]
+  WI["Exact installed Windows Appx"] --> WV["Windows source validation"]
+  WM["Pinned Windows Store MSIX"] --> WV
+  WV --> E["Selective ASAR extractor"]
   U["Official macOS Desktop zip"] --> E
-  W --> R["Official Resources copier"]
+  WV --> R["Official Resources copier"]
   U --> R
   E --> M["Metadata validation"]
   R --> A["Fail-closed runtime audit"]
@@ -22,10 +24,21 @@ flowchart LR
   S --> O
 ```
 
-Windows selects the exact installed `OpenAI.Codex` Appx package recorded in
-`scripts/runtime-versions.json`; newer local Store packages are used only by an
-explicit override. macOS and Linux download the pinned official macOS zip, or
-consume `HOSTED_CODEX_APP_ZIP` when supplied. Both paths converge on:
+Windows first selects the exact installed `OpenAI.Codex` Appx package recorded
+in `scripts/runtime-versions.json` for the active Node.js architecture. If it is absent, the Windows adapter
+downloads the pinned x64 or arm64 MSIX through the optional shared proxy and
+extracts it atomically below ignored `scratch/` state. A historical release
+mirror can transport the byte-identical Store payload, but it is not a trust
+root: the adapter requires the Store Catalog byte length and SHA-256, a valid
+Authenticode package signature whose signer is the pinned Appx publisher and
+whose chain is issued by Microsoft, and the exact identity, publisher, version,
+and architecture from `AppxManifest.xml`. Newer local Store packages are used
+only by an explicit override and newer remote versions are never discovered.
+Extraction decodes Appx block-map URI paths (for example `%40oai` to `@oai`)
+before applying the archive traversal guard, matching Windows Store deployment
+semantics for scoped Node packages.
+macOS and Linux download the pinned official macOS zip, or consume
+`HOSTED_CODEX_APP_ZIP` when supplied. Both paths converge on:
 
 - `scripts/windows/setup.ps1` and `scripts/unix/*.sh`, the platform-specific
   source acquisition adapters behind the shared `npm run build` entry;
@@ -195,6 +208,13 @@ build adapter uses the same runtime manager. Explicit `CODEX_CLI_PATH` values
 remain overrides. No `CODEX_HOME` override is applied, so the managed executable
 shares the host's normal account, configuration, and data directories.
 
+`scripts/managed-download.mjs` owns the common proxy-aware, resumable download
+transaction for pinned CLI and Windows Desktop archives. It publishes a cache
+entry only after exact size and SRI validation. Artifact-specific trust remains
+outside that transport layer: the CLI manager executes and checks `--version`,
+while the Windows source adapter performs package signature and Appx metadata
+checks before exposing a Resources tree.
+
 Nix reads the same manifest artifacts but preserves reproducibility by fetching
 the CLI into the Nix store and wrapping `codex-web` with that store path. Runtime
 download caches and extracted binaries are never included in npm packages.
@@ -238,6 +258,8 @@ the affected UI flow.
 ## Generated and packaged files
 
 - `scratch/desktop-source/`: temporary Unix zip extraction.
+- `scratch/desktop-packages/`: verified managed Windows MSIX extraction cache.
+- `scratch/downloads/`: verified pinned CLI and Windows Desktop archives.
 - `scratch/chatgpt-desktop.asar`: copied Windows source ASAR.
 - `scratch/asar/`: patched package content shipped by npm/Nix.
 - `src/server/**/*.js`: generated server output.

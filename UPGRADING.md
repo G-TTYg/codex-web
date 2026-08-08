@@ -31,6 +31,14 @@ can be used directly as SRI hashes for the platform Codex CLI tarballs. The
 shared runtime manager supports macOS, Linux, and Windows x64/arm64 descriptors
 and rejects a download whose SRI value differs from the manifest.
 
+For a historical Windows Store version, an exact byte mirror may be recorded as
+the transport URL only when its size and SHA-256 match the Microsoft Store
+Catalog entry. Record x64 and arm64 independently. The build must still verify
+the MSIX Authenticode chain, pinned Store publisher, Appx identity, version,
+architecture, ASAR version, brand, Electron version, and runtime externals; do
+not treat the mirror repository or release metadata as a trust root. Never
+replace a missing pin with the newest Store package or release.
+
 Do not assume the Windows Appx version equals the version inside `app.asar`, or
 that Windows and macOS ASAR files with the same internal version are byte- or
 minifier-identical.
@@ -61,6 +69,12 @@ powershell -File .\scripts\windows\setup.ps1 `
 ```
 
 Never commit the extracted trees or official archive.
+
+The default Windows setup uses the exact installed Appx for the active Node.js
+architecture when present and otherwise downloads that pinned MSIX. Use
+`CODEX_WEB_DOWNLOAD_PROXY` or `-DownloadProxy` when the managed transfer needs
+a proxy. A valid archive is cached under `scratch/downloads/`; its validated,
+atomically extracted package tree is cached under `scratch/desktop-packages/`.
 
 ## 4. Port semantic transformations
 

@@ -94,7 +94,10 @@ function Resolve-ChatGPTDesktopAsar {
     [string]$ExplicitUnpackedPath,
     [string]$ExplicitResourcesPath,
     [bool]$UseNewest,
-    [object]$Manifest
+    [object]$Manifest,
+    [string]$Node,
+    [string]$DownloadProxy,
+    [string]$ProjectRoot
   )
 
   if ($ExplicitAsarPath) {
@@ -133,7 +136,9 @@ function Resolve-ChatGPTDesktopAsar {
   # The ChatGPT-branded Codex workspace app currently keeps the historical
   # OpenAI.Codex Store identity. Validate the actual brand from ASAR metadata.
   $packageIdentity = [string]$Manifest.windowsDesktop.packageIdentity
+  $buildArchitecture = Get-WindowsDesktopArchitecture -Node $Node
   $packages = @(Get-AppxPackage -Name $packageIdentity -ErrorAction SilentlyContinue |
+    Where-Object { ([string]$_.Architecture).ToLowerInvariant() -eq $buildArchitecture } |
     Sort-Object { [version]$_.Version } -Descending)
 
   $effectiveVersion = $RequestedVersion
@@ -142,9 +147,6 @@ function Resolve-ChatGPTDesktopAsar {
   }
   if ($effectiveVersion) {
     $packages = @($packages | Where-Object { [string]$_.Version -eq $effectiveVersion })
-    if ($packages.Count -eq 0) {
-      throw "Could not find installed $packageIdentity version $effectiveVersion. Install that pinned Microsoft Store version, pass -AppAsarPath, or explicitly use -UseNewestInstalledDesktop."
-    }
   }
 
   foreach ($package in $packages) {
@@ -161,6 +163,21 @@ function Resolve-ChatGPTDesktopAsar {
         }
       }
     }
+  }
+
+  $pinnedVersion = [string]$Manifest.windowsDesktop.packageVersion
+  if (-not $UseNewest -and $effectiveVersion -eq $pinnedVersion) {
+    Write-Host "Pinned $packageIdentity $pinnedVersion is not installed; preparing its verified managed MSIX."
+    return Resolve-ManagedDesktopPackage `
+      -Node $Node `
+      -Architecture $buildArchitecture `
+      -DownloadProxy $DownloadProxy `
+      -Manifest $Manifest `
+      -ProjectRoot $ProjectRoot
+  }
+
+  if ($effectiveVersion) {
+    throw "Could not find installed $packageIdentity version $effectiveVersion for $buildArchitecture. Only the manifest-pinned version can be downloaded; pass -AppAsarPath for another official source."
   }
 
   throw "Could not find an installed ChatGPT Desktop app.asar. Install the pinned Microsoft Store package or pass -AppAsarPath explicitly."
@@ -192,6 +209,7 @@ if (-not (Test-Path -LiteralPath "package.json")) {
 $node = Resolve-RequiredCommand -Names @("node.exe", "node") -ErrorMessage "Could not find Node.js. Install Node.js 22.12+ and re-run npm run build."
 $npm = Resolve-RequiredCommand -Names @("npm.cmd", "npm") -ErrorMessage "Could not find npm. Install Node.js and re-run npm run build."
 $runtimeManifest = Get-Content -LiteralPath "scripts\runtime-versions.json" -Raw | ConvertFrom-Json
+. (Join-Path $PSScriptRoot "desktop-source.ps1")
 if (($UseNewestInstalledDesktop -and $AppVersion) -or ($AppAsarPath -and ($UseNewestInstalledDesktop -or $AppVersion))) {
   throw "Use only one Desktop source override: -AppAsarPath, -AppVersion, or -UseNewestInstalledDesktop."
 }
@@ -204,7 +222,10 @@ $chatGPTDesktopAsar = Resolve-ChatGPTDesktopAsar `
   -ExplicitUnpackedPath $AppAsarUnpackedPath `
   -ExplicitResourcesPath $AppResourcesPath `
   -UseNewest ([bool]$UseNewestInstalledDesktop) `
-  -Manifest $runtimeManifest
+  -Manifest $runtimeManifest `
+  -Node $node `
+  -DownloadProxy $DownloadProxy `
+  -ProjectRoot $projectRoot
 $asarPath = "scratch\chatgpt-desktop.asar"
 $asarOut = "scratch\asar"
 
