@@ -685,6 +685,9 @@ replaceOneOfOnce(
   "electron shim closeSidebar",
 );
 
+// The browser keyboard coordinator must distinguish the bottom prompt editor
+// from top/side search and form inputs. Mark the shared prompt editor itself;
+// placeholders and fingerprinted composer classes are not stable contracts.
 replaceOneOfOnce(
   appInitialPath,
   [
@@ -692,16 +695,16 @@ replaceOneOfOnce(
       before:
         'g=new g6a,_=c,v=new Ban(null,{attributes:{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`},',
       after:
-        'g=new g6a,_=c,codexWebPointerInput=!1,codexWebAttributes=()=>codexWebPointerInput?{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`}:{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`,inputmode:`none`},codexWebSetPointerInput=e=>{codexWebPointerInput!==e&&(codexWebPointerInput=e,v.isDestroyed||v.setProps({attributes:codexWebAttributes()}))},v=new Ban(null,{attributes:codexWebAttributes(),',
+        'g=new g6a,_=c,codexWebPointerInput=!1,codexWebAttributes=()=>codexWebPointerInput?{"aria-multiline":`true`,"data-codex-keyboard-surface":`composer`,dir:`auto`,role:`textbox`,spellcheck:`true`}:{"aria-multiline":`true`,"data-codex-keyboard-surface":`composer`,dir:`auto`,role:`textbox`,spellcheck:`true`,inputmode:`none`},codexWebSetPointerInput=e=>{codexWebPointerInput!==e&&(codexWebPointerInput=e,v.isDestroyed||v.setProps({attributes:codexWebAttributes()}))},v=new Ban(null,{attributes:codexWebAttributes(),',
     },
     {
       before:
         'g=new S6a,_=c,v=new Ban(null,{attributes:{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`},',
       after:
-        'g=new S6a,_=c,codexWebPointerInput=!1,codexWebAttributes=()=>codexWebPointerInput?{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`}:{"aria-multiline":`true`,dir:`auto`,role:`textbox`,spellcheck:`true`,inputmode:`none`},codexWebSetPointerInput=e=>{codexWebPointerInput!==e&&(codexWebPointerInput=e,v.isDestroyed||v.setProps({attributes:codexWebAttributes()}))},v=new Ban(null,{attributes:codexWebAttributes(),',
+        'g=new S6a,_=c,codexWebPointerInput=!1,codexWebAttributes=()=>codexWebPointerInput?{"aria-multiline":`true`,"data-codex-keyboard-surface":`composer`,dir:`auto`,role:`textbox`,spellcheck:`true`}:{"aria-multiline":`true`,"data-codex-keyboard-surface":`composer`,dir:`auto`,role:`textbox`,spellcheck:`true`,inputmode:`none`},codexWebSetPointerInput=e=>{codexWebPointerInput!==e&&(codexWebPointerInput=e,v.isDestroyed||v.setProps({attributes:codexWebAttributes()}))},v=new Ban(null,{attributes:codexWebAttributes(),',
     },
   ],
-  "prompt editor pointer input mode attributes",
+  "prompt editor pointer input mode and keyboard surface attributes",
 );
 replaceOnce(
   appInitialPath,

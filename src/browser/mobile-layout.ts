@@ -105,8 +105,8 @@ let installed = false;
 
 const LEFT_PANEL_SELECTOR = "aside.app-shell-left-panel";
 const RIGHT_PANEL_SELECTOR = 'aside[data-app-shell-focus-area="right-panel"]';
-const PERSISTENT_MOBILE_SEARCH_SELECTOR =
-  '[data-file-tree-search-input], [cmdk-input], [role="searchbox"], input[type="search"]';
+export const MOBILE_SEARCH_INPUT_SELECTOR =
+  '[data-file-tree-search-input], [cmdk-input], [role="searchbox"], input[type="search"], input[data-search]';
 
 export function hasTouchInputCapability(): boolean {
   return (
@@ -175,7 +175,7 @@ export function installMobileLayout(
     const target = event.target;
     if (
       !(target instanceof Element) ||
-      !target.matches(PERSISTENT_MOBILE_SEARCH_SELECTOR)
+      !target.matches(MOBILE_SEARCH_INPUT_SELECTOR)
     ) {
       return;
     }

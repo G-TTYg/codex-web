@@ -51,6 +51,7 @@ class FakeElement extends FakeEventTarget {
   children = [];
   dataset = {};
   editable = false;
+  matchingSelectors = new Set();
   scrollLeft = 0;
   scrollTop = 0;
   style = new FakeStyle();
@@ -60,8 +61,11 @@ class FakeElement extends FakeEventTarget {
     this.children.push(child);
   }
 
-  closest() {
-    return this.editable ? this : null;
+  closest(selector) {
+    if (this.matches(selector)) {
+      return this;
+    }
+    return this.editable && selector.includes("textarea") ? this : null;
   }
 
   getAttribute(name) {
@@ -70,6 +74,12 @@ class FakeElement extends FakeEventTarget {
 
   setAttribute(name, value) {
     this.attributes.set(name, String(value));
+  }
+
+  matches(selector) {
+    return selector
+      .split(",")
+      .some((candidate) => this.matchingSelectors.has(candidate.trim()));
   }
 }
 
@@ -172,8 +182,10 @@ class FakeClock {
 
 async function loadKeyboardModule() {
   const source = (await readFile(sourcePath, "utf8")).replace(
-    'import { hasTouchInputCapability } from "./mobile-layout";',
-    "const hasTouchInputCapability = () => true;",
+    /import\s*\{\s*hasTouchInputCapability,\s*MOBILE_SEARCH_INPUT_SELECTOR,\s*\}\s*from\s*"\.\/mobile-layout";/,
+    `const hasTouchInputCapability = () => true;
+const MOBILE_SEARCH_INPUT_SELECTOR =
+  '[data-file-tree-search-input], [cmdk-input], [role="searchbox"], input[type="search"], input[data-search]';`,
   );
   const { outputText } = ts.transpileModule(source, {
     compilerOptions: {
@@ -236,7 +248,13 @@ async function createHarness() {
       document.activeElement = input;
       window.emit("focusin", input);
     },
-    input: () => new FakeInputElement(),
+    input: (...matchingSelectors) => {
+      const input = new FakeInputElement();
+      for (const selector of matchingSelectors) {
+        input.matchingSelectors.add(selector);
+      }
+      return input;
+    },
     root: document.documentElement,
     scrollCalls,
     viewport,
@@ -249,20 +267,26 @@ async function createHarness() {
 
 const lockAttribute = "data-codex-visual-viewport-lock";
 const keyboardAttribute = "data-codex-software-keyboard";
+const activeSurfaceAttribute = "data-codex-active-keyboard-surface";
 const heightProperty = "--codex-keyboard-shell-height";
 const leftProperty = "--codex-keyboard-shell-left";
 const topProperty = "--codex-keyboard-shell-top";
 const widthProperty = "--codex-keyboard-shell-width";
+const composerSelector = '[data-codex-keyboard-surface="composer"]';
+const fileTreeSearchSelector = "[data-file-tree-search-input]";
+const commandSearchSelector = "[cmdk-input]";
+const textFileSearchSelector = "input[data-search]";
 
 test("mobile keyboard viewport coordinator", async (suite) => {
   await suite.test(
-    "locks on focus and follows sub-threshold geometry",
+    "fits a generic editor to sub-threshold Visual Viewport geometry",
     async () => {
       const harness = await createHarness();
       const input = harness.input();
 
       harness.focus(input);
       assert.equal(harness.root.getAttribute(lockAttribute), "true");
+      assert.equal(harness.root.getAttribute(activeSurfaceAttribute), "editor");
       assert.equal(
         harness.root.style.getPropertyValue(heightProperty),
         "768px",
@@ -280,10 +304,10 @@ test("mobile keyboard viewport coordinator", async (suite) => {
       assert.notEqual(harness.root.getAttribute(keyboardAttribute), "true");
       assert.equal(
         harness.root.style.getPropertyValue(heightProperty),
-        "768px",
+        "736px",
       );
       assert.equal(harness.root.style.getPropertyValue(leftProperty), "3px");
-      assert.equal(harness.root.style.getPropertyValue(topProperty), "-20px");
+      assert.equal(harness.root.style.getPropertyValue(topProperty), "12px");
       assert.equal(
         harness.root.style.getPropertyValue(widthProperty),
         "1000px",
@@ -295,7 +319,11 @@ test("mobile keyboard viewport coordinator", async (suite) => {
     "samples WebKit animation when events are absent",
     async () => {
       const harness = await createHarness();
-      harness.focus(harness.input());
+      harness.focus(harness.input(composerSelector));
+      assert.equal(
+        harness.root.getAttribute(activeSurfaceAttribute),
+        "composer",
+      );
 
       Object.assign(harness.viewport, { height: 460, offsetTop: 48 });
       harness.clock.runFrame();
@@ -313,7 +341,7 @@ test("mobile keyboard viewport coordinator", async (suite) => {
     "moves the whole shell upward and aligns its bottom with the keyboard",
     async () => {
       const harness = await createHarness();
-      harness.focus(harness.input());
+      harness.focus(harness.input(composerSelector));
 
       harness.viewport.height = 600;
       harness.viewportChanged();
@@ -340,7 +368,7 @@ test("mobile keyboard viewport coordinator", async (suite) => {
     "does not double-apply WebKit's Visual Viewport pan",
     async () => {
       const harness = await createHarness();
-      harness.focus(harness.input());
+      harness.focus(harness.input(composerSelector));
       Object.assign(harness.viewport, { height: 450, offsetTop: 100 });
       harness.viewportChanged("scroll");
 
@@ -359,6 +387,88 @@ test("mobile keyboard viewport coordinator", async (suite) => {
     },
   );
 
+  await suite.test(
+    "keeps global, file-tree, and text-file searches inside the Visual Viewport",
+    async () => {
+      const cases = [
+        [commandSearchSelector, "command-search"],
+        [fileTreeSearchSelector, "file-tree-search"],
+        [textFileSearchSelector, "text-file-search"],
+      ];
+      for (const [selector, expectedSurface] of cases) {
+        const harness = await createHarness();
+        harness.focus(harness.input(selector));
+        Object.assign(harness.viewport, { height: 450, offsetTop: 32 });
+        harness.viewportChanged();
+
+        assert.equal(
+          harness.root.getAttribute(activeSurfaceAttribute),
+          expectedSurface,
+        );
+        assert.equal(
+          harness.root.style.getPropertyValue(heightProperty),
+          "450px",
+        );
+        assert.equal(harness.root.style.getPropertyValue(topProperty), "32px");
+      }
+    },
+  );
+
+  await suite.test(
+    "fits dialog and sidebar editors without moving them off the top",
+    async () => {
+      const cases = [
+        ['[role="dialog"]', "dialog-editor"],
+        ["aside.app-shell-left-panel", "left-sidebar-editor"],
+        [
+          'aside[data-app-shell-focus-area="right-panel"]',
+          "right-sidebar-editor",
+        ],
+      ];
+      for (const [selector, expectedSurface] of cases) {
+        const harness = await createHarness();
+        harness.focus(harness.input(selector));
+        Object.assign(harness.viewport, { height: 500, offsetTop: 24 });
+        harness.viewportChanged();
+
+        assert.equal(
+          harness.root.getAttribute(activeSurfaceAttribute),
+          expectedSurface,
+        );
+        assert.equal(
+          harness.root.style.getPropertyValue(heightProperty),
+          "500px",
+        );
+        assert.equal(harness.root.style.getPropertyValue(topProperty), "24px");
+      }
+    },
+  );
+
+  await suite.test(
+    "switches immediately from top search to bottom composer geometry",
+    async () => {
+      const harness = await createHarness();
+      harness.focus(harness.input(commandSearchSelector));
+      harness.viewport.height = 450;
+      harness.viewportChanged();
+      assert.equal(
+        harness.root.style.getPropertyValue(heightProperty),
+        "450px",
+      );
+
+      harness.focus(harness.input(composerSelector));
+      assert.equal(
+        harness.root.getAttribute(activeSurfaceAttribute),
+        "composer",
+      );
+      assert.equal(
+        harness.root.style.getPropertyValue(heightProperty),
+        "768px",
+      );
+      assert.equal(harness.root.style.getPropertyValue(topProperty), "-318px");
+    },
+  );
+
   await suite.test("does not normalize a hardware-keyboard focus", async () => {
     const harness = await createHarness();
     const input = harness.input();
@@ -372,6 +482,7 @@ test("mobile keyboard viewport coordinator", async (suite) => {
     harness.clock.runFrame();
 
     assert.equal(harness.root.getAttribute(lockAttribute), "false");
+    assert.equal(harness.root.getAttribute(activeSurfaceAttribute), "none");
     assert.equal(harness.root.style.getPropertyValue(heightProperty), "");
     assert.deepEqual(harness.scrollCalls, []);
     assert.equal(harness.document.documentElement.scrollTop, 41);
@@ -382,8 +493,8 @@ test("mobile keyboard viewport coordinator", async (suite) => {
     "invalidates queued recovery when focus changes",
     async () => {
       const harness = await createHarness();
-      const first = harness.input();
-      const second = harness.input();
+      const first = harness.input(composerSelector);
+      const second = harness.input(fileTreeSearchSelector);
       harness.focus(first);
       harness.viewport.height = 450;
       harness.viewportChanged();
@@ -399,10 +510,14 @@ test("mobile keyboard viewport coordinator", async (suite) => {
       assert.equal(harness.root.getAttribute(lockAttribute), "true");
       assert.equal(harness.root.getAttribute(keyboardAttribute), "true");
       assert.equal(
-        harness.root.style.getPropertyValue(heightProperty),
-        "768px",
+        harness.root.getAttribute(activeSurfaceAttribute),
+        "file-tree-search",
       );
-      assert.equal(harness.root.style.getPropertyValue(topProperty), "-318px");
+      assert.equal(
+        harness.root.style.getPropertyValue(heightProperty),
+        "450px",
+      );
+      assert.equal(harness.root.style.getPropertyValue(topProperty), "0px");
     },
   );
 
@@ -410,7 +525,7 @@ test("mobile keyboard viewport coordinator", async (suite) => {
     "finishes close recovery while frame sampling remains active",
     async () => {
       const harness = await createHarness();
-      const input = harness.input();
+      const input = harness.input(composerSelector);
       harness.focus(input);
       harness.viewport.height = 450;
       harness.viewportChanged();
@@ -443,7 +558,7 @@ test("mobile keyboard viewport coordinator", async (suite) => {
 
   await suite.test("unlocks only after blur and keyboard close", async () => {
     const harness = await createHarness();
-    const input = harness.input();
+    const input = harness.input(composerSelector);
     harness.focus(input);
     harness.viewport.height = 450;
     harness.viewportChanged();
@@ -463,7 +578,7 @@ test("mobile keyboard viewport coordinator", async (suite) => {
     "re-baselines rotation and split-view width changes",
     async () => {
       const harness = await createHarness();
-      const first = harness.input();
+      const first = harness.input(composerSelector);
       harness.focus(first);
       harness.viewport.height = 450;
       harness.viewportChanged();
@@ -485,7 +600,7 @@ test("mobile keyboard viewport coordinator", async (suite) => {
       harness.clock.runFrame();
       assert.equal(harness.root.getAttribute(lockAttribute), "false");
 
-      harness.focus(harness.input());
+      harness.focus(harness.input(composerSelector));
       harness.viewport.height = 520;
       harness.viewportChanged();
       assert.equal(harness.root.getAttribute(keyboardAttribute), "true");
