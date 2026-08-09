@@ -117,7 +117,10 @@ reasserts those invariants after sizing and before any unexpected show or focus
 path can expose it. Renderer-side `RemoteWebContents` keeps logical focus,
 while direct guest input injection deliberately never focuses the native
 owner. Native DevTools are disabled because they would create another
-host-owned window.
+host-owned window. The browser shim also maps renderer `open-in-browser`
+requests to the renderer's native `toggle-browser-panel` message and consumes
+the IPC locally, so a hosted URL cannot create a second browser window or fall
+through to Desktop's external-browser handler.
 
 `src/server/auth.ts` owns the optional shared-password boundary enabled by
 `CODEX_WEB_AUTH_PASSWORD`. A Fastify request hook protects the renderer,

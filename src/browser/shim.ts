@@ -30,6 +30,7 @@ import {
   type BrowserWebviewMainMessage,
   type BrowserWebviewRendererMessage,
 } from "./browser-webview";
+import { openUrlInEmbeddedBrowser } from "./embedded-browser-navigation";
 
 type IpcListener = (event: unknown, ...args: unknown[]) => void;
 
@@ -365,21 +366,6 @@ function isOpenInBrowserMessage(value: unknown): value is {
   );
 }
 
-function openBrowserUrl(url: string): void {
-  // WebKit can reject a direct target=_blank navigation even while processing
-  // a synthetic React click. Opening a same-origin blank context first keeps
-  // the operation in the user-activation stack; if popups are disabled, the
-  // current tab remains a reliable fallback instead of leaving a dead link.
-  const browserWindow = window.open("about:blank", "_blank");
-  if (!browserWindow) {
-    window.location.assign(url);
-    return;
-  }
-
-  browserWindow.opener = null;
-  browserWindow.location.replace(url);
-}
-
 function requestWorkspaceDirectoryEntries(
   directoryPath: string | null,
 ): Promise<WorkspaceDirectoryEntries> {
@@ -510,7 +496,8 @@ export const ipcRenderer = {
   invoke(channel: string, ...args: unknown[]): Promise<unknown> {
     if (channel === "codex_desktop:message-from-view" && args.length === 1) {
       if (isOpenInBrowserMessage(args[0])) {
-        openBrowserUrl(args[0].url);
+        openUrlInEmbeddedBrowser(args[0].url);
+        return Promise.resolve(undefined);
       }
 
       if (isLocalFilePickerMessage(args[0])) {

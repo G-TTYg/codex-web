@@ -12,6 +12,10 @@ const electronShimSourcePath = new URL(
   "../src/server/electron/index.ts",
   import.meta.url,
 );
+const embeddedBrowserNavigationSourcePath = new URL(
+  "../src/browser/embedded-browser-navigation.ts",
+  import.meta.url,
+);
 let moduleSequence = 0;
 
 class FakeEventTarget {
@@ -133,6 +137,20 @@ async function loadElectronShimModule() {
   return import(`data:text/javascript;base64,${encoded}#${moduleSequence}`);
 }
 
+async function loadEmbeddedBrowserNavigationModule() {
+  const source = await readFile(embeddedBrowserNavigationSourcePath, "utf8");
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+    fileName: "embedded-browser-navigation.ts",
+  });
+  moduleSequence += 1;
+  const encoded = Buffer.from(outputText).toString("base64");
+  return import(`data:text/javascript;base64,${encoded}#${moduleSequence}`);
+}
+
 function installFakeDom() {
   delete globalThis[Symbol.for("codex-web.browser-webview-runtime")];
   FakeDocument.prototype.createElement = function createElement() {
@@ -171,6 +189,39 @@ function installFakeDom() {
     },
   };
 }
+
+test("open-in-browser requests stay inside the Desktop Browser panel", async () => {
+  const shim = await readFile(
+    new URL("../src/browser/shim.ts", import.meta.url),
+    "utf8",
+  );
+  const messages = [];
+  const navigation = await loadEmbeddedBrowserNavigationModule();
+  const target = {
+    location: { origin: "https://codex-web.test" },
+    postMessage: (...args) => messages.push(args),
+  };
+
+  navigation.openUrlInEmbeddedBrowser("https://example.test/path", target);
+
+  assert.deepEqual(messages, [
+    [
+      {
+        type: "toggle-browser-panel",
+        open: true,
+        url: "https://example.test/path",
+        source: "manual",
+        initiator: "open_in_browser_bridge",
+      },
+      "https://codex-web.test",
+    ],
+  ]);
+  assert.match(
+    shim,
+    /openUrlInEmbeddedBrowser\(args\[0\]\.url\);\s*return Promise\.resolve\(undefined\)/,
+  );
+  assert.doesNotMatch(shim, /window\.open\(/);
+});
 
 test("remote webview uses the native slot and touch-only input transport", async () => {
   const fakeDom = installFakeDom();

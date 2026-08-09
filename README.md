@@ -262,7 +262,8 @@ someone with access to the web UI may be able to:
   - the built-in Browser panel through isolated offscreen Electron
     `WebContentsView` guests on one shared non-UI host, including native
     navigation state, rendered page frames, mouse/keyboard input, and touch
-    tap/drag/scroll input
+    tap/drag/scroll input; hosted `open-in-browser` requests re-enter this panel
+    instead of creating a separate browser window
   - inline images
   - editor sidepanel
   - transcription
