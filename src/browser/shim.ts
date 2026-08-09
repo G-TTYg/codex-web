@@ -31,6 +31,10 @@ import {
   type BrowserWebviewRendererMessage,
 } from "./browser-webview";
 import { openUrlInEmbeddedBrowser } from "./embedded-browser-navigation";
+import {
+  createBuildRevisionGuard,
+  type ServerBuildRevisionMessage,
+} from "./build-revision";
 
 type IpcListener = (event: unknown, ...args: unknown[]) => void;
 
@@ -108,6 +112,7 @@ type MainToRendererMessage =
       type: "message-port-close";
       portId: string;
     }
+  | ServerBuildRevisionMessage
   | BrowserWebviewMainMessage;
 
 const RECONNECT_DELAY_MS = 1_000;
@@ -155,6 +160,7 @@ declare global {
 
 declare const __CODEX_APP_VERSION__: string;
 declare const __CODEX_ELECTRON_VERSION__: string;
+declare const __CODEX_WEB_BUILD_REVISION__: string;
 
 let requestCounter = 0;
 let socket: WebSocket | null = null;
@@ -176,6 +182,10 @@ const pendingDirectoryEntries = new Map<
 >();
 const rendererListeners = new Map<string, Set<IpcListener>>();
 const messagePorts = new Map<string, MessagePort>();
+const handleBuildRevisionMessage = createBuildRevisionGuard(
+  __CODEX_WEB_BUILD_REVISION__,
+  () => window.location.reload(),
+);
 
 function unimplemented(method: string): never {
   debugger;
@@ -194,6 +204,9 @@ export function emitRendererEvent(channel: string, args: unknown[]): void {
 }
 
 function handleIncomingMessage(message: MainToRendererMessage): void {
+  if (handleBuildRevisionMessage(message)) {
+    return;
+  }
   if (handleBrowserWebviewMessage(message)) {
     return;
   }

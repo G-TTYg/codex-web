@@ -87,6 +87,14 @@ loads the official Desktop main bundle after installing the module alias in
 `src/server/electron/`. The existing MessagePort/app-host forwarding is kept so
 subagents and newer Desktop protocol paths continue to work.
 
+Every browser build emits a revision manifest and embeds the same revision in
+its preload bundle. The server reads the manifest before listening and
+announces the revision on each WebSocket connection. A long-lived renderer
+reloads once when that value differs from its embedded revision, preventing a
+server restart from reconnecting an old preload to newly deployed server code.
+The entry HTML, preload bundle, and revision manifest are served with
+`no-store`; content-hashed upstream assets retain normal static caching.
+
 Electron `<webview>` guests are the one renderer contract that cannot execute
 inside an ordinary browser. `src/browser/browser-webview.ts` retains the
 renderer-owned Browser panel slot, paints frames into that slot, and forwards

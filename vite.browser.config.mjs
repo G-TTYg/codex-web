@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
@@ -12,6 +13,7 @@ const preloadEntryPath = path.resolve(
 );
 const browserNodeEnv = process.env.NODE_ENV ?? "production";
 const asarPackageJson = JSON.parse(readFileSync(asarPackagePath, "utf8"));
+const browserBuildRevision = randomUUID();
 
 if (typeof asarPackageJson.version !== "string" || !asarPackageJson.version) {
   throw new Error(`Expected a version string in ${asarPackagePath}`);
@@ -26,8 +28,21 @@ export default defineConfig({
   define: {
     __CODEX_APP_VERSION__: JSON.stringify(asarPackageJson.version),
     __CODEX_ELECTRON_VERSION__: JSON.stringify(electronVersion),
+    __CODEX_WEB_BUILD_REVISION__: JSON.stringify(browserBuildRevision),
     "process.env.NODE_ENV": JSON.stringify(browserNodeEnv),
   },
+  plugins: [
+    {
+      name: "codex-web-build-revision",
+      generateBundle() {
+        this.emitFile({
+          type: "asset",
+          fileName: "build-revision.json",
+          source: `${JSON.stringify({ revision: browserBuildRevision })}\n`,
+        });
+      },
+    },
+  ],
   server: {
     host: "127.0.0.1",
     port: 4173,

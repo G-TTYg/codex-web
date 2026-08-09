@@ -18,6 +18,10 @@ import fastifyStatic from "@fastify/static";
 import { installModuleAliasHook } from "./module";
 import { createPasswordAuth } from "./auth";
 import { BrowserHost } from "./browser-host";
+import {
+  readRendererBuildRevision,
+  shouldDisableRendererAssetCache,
+} from "./renderer-build";
 import type {
   BrowserHostCreateOptions,
   BrowserHostEventMessage,
@@ -86,6 +90,10 @@ type RendererToMainMessage =
     };
 
 type MainToRendererMessage =
+  | {
+      type: "server-build-revision";
+      revision: string;
+    }
   | {
       type: "ipc-main-event";
       channel: string;
@@ -470,6 +478,8 @@ function ensureElectronLikeProcessContext(electronVersion: string): void {
 async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
   const bridgeState = getIpcMainBridgeState();
   const projectRoot = path.resolve(__dirname, "../..");
+  const webviewRoot = path.resolve(projectRoot, "scratch/asar/webview");
+  const rendererBuildRevision = await readRendererBuildRevision(webviewRoot);
   const browserHost = new BrowserHost(projectRoot);
   (
     globalThis as typeof globalThis & {
@@ -535,8 +545,14 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
   });
 
   await app.register(fastifyStatic, {
-    root: path.resolve(__dirname, "../../scratch/asar/webview"),
+    root: webviewRoot,
     prefix: "/",
+    setHeaders(response, filePath) {
+      if (shouldDisableRendererAssetCache(webviewRoot, filePath)) {
+        response.header("Cache-Control", "no-store, no-cache, must-revalidate");
+        response.header("Expires", "0");
+      }
+    },
   });
 
   app.get("/", async (_request, reply) => {
@@ -592,6 +608,10 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
         socket.send(JSON.stringify(message));
       }
     };
+    sendToRenderer({
+      type: "server-build-revision",
+      revision: rendererBuildRevision,
+    });
     const dispatchPostMessage = (
       channel: string,
       message: unknown,
