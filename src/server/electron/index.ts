@@ -745,6 +745,13 @@ class BrowserWindow {
     log(`BrowserWindow#${this.id}.show`, []);
   }
 
+  showInactive(): void {
+    // The Browser manager uses this after disabling background throttling.
+    // There is no native host window to reveal, and unlike show()/focus() this
+    // contract must not steal focus from the renderer-owned primary window.
+    log(`BrowserWindow#${this.id}.showInactive`, []);
+  }
+
   hide(): void {
     log(`BrowserWindow#${this.id}.hide`, []);
   }

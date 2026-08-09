@@ -68,18 +68,46 @@ type ViewState = {
   viewId: string;
 };
 
-const views = new Map<string, ViewState>();
-const statesByElement = new WeakMap<HTMLElement, ViewState>();
-let sendMessage: SendMessage | null = null;
-let instanceSequence = 0;
-let installed = false;
+type BrowserWebviewRuntime = {
+  installed: boolean;
+  instanceSequence: number;
+  sendMessage: SendMessage | null;
+  statesByElement: WeakMap<HTMLElement, ViewState>;
+  version: 1;
+  views: Map<string, ViewState>;
+};
+
+const runtimeKey = Symbol.for("codex-web.browser-webview-runtime");
+const runtime = getBrowserWebviewRuntime();
+const views = runtime.views;
+const statesByElement = runtime.statesByElement;
+
+function getBrowserWebviewRuntime(): BrowserWebviewRuntime {
+  const existing = Reflect.get(globalThis, runtimeKey) as
+    | BrowserWebviewRuntime
+    | undefined;
+  if (existing?.version === 1) {
+    return existing;
+  }
+
+  const created: BrowserWebviewRuntime = {
+    installed: false,
+    instanceSequence: 0,
+    sendMessage: null,
+    statesByElement: new WeakMap<HTMLElement, ViewState>(),
+    version: 1,
+    views: new Map<string, ViewState>(),
+  };
+  Reflect.set(globalThis, runtimeKey, created);
+  return created;
+}
 
 export function installBrowserWebviews(send: SendMessage): void {
-  sendMessage = send;
-  if (installed) {
+  runtime.sendMessage = send;
+  if (runtime.installed) {
     return;
   }
-  installed = true;
+  runtime.installed = true;
 
   const originalCreateElement = Document.prototype.createElement;
   Document.prototype.createElement = function createElement(
@@ -92,8 +120,10 @@ export function installBrowserWebviews(send: SendMessage): void {
     }
     return element;
   } as typeof Document.prototype.createElement;
+  installKeyboardCapture();
 
   const mountObserver = new MutationObserver(() => {
+    enhanceExistingWebviews();
     for (const state of views.values()) {
       syncConnection(state);
     }
@@ -102,6 +132,15 @@ export function installBrowserWebviews(send: SendMessage): void {
     childList: true,
     subtree: true,
   });
+  enhanceExistingWebviews();
+}
+
+function enhanceExistingWebviews(): void {
+  for (const element of document.querySelectorAll("webview")) {
+    if (element instanceof HTMLElement) {
+      enhanceWebview(element);
+    }
+  }
 }
 
 export function handleBrowserWebviewMessage(value: unknown): boolean {
@@ -158,49 +197,26 @@ function enhanceWebview(element: HTMLElement): void {
     return;
   }
   const viewId = crypto.randomUUID();
-  const shadow = element.attachShadow({ mode: "open" });
-  const style = document.createElement("style");
-  style.textContent = `
-    :host {
-      contain: strict;
-      display: block;
-      min-height: 0;
-      min-width: 0;
-      overflow: hidden;
-      touch-action: none;
-    }
-    img {
-      display: block;
-      height: 100%;
-      object-fit: fill;
-      pointer-events: auto;
-      user-select: none;
-      width: 100%;
-      -webkit-user-drag: none;
-    }
-    textarea {
-      background: transparent;
-      border: 0;
-      caret-color: transparent;
-      height: 1px;
-      margin: 0;
-      opacity: 0.01;
-      padding: 0;
-      pointer-events: none;
-      position: absolute;
-      resize: none;
-      width: 1px;
-      z-index: -1;
-    }
-  `;
+  // `webview` is not a valid autonomous custom-element name. Ordinary Edge
+  // and Safari may therefore reject attachShadow() even though Electron's
+  // renderer accepts it. Keep the host native and use an inline-styled light
+  // DOM surface so the same renderer slot works in every supported browser.
+  element.style.cssText +=
+    ";contain:strict;display:block;min-height:0;min-width:0;overflow:hidden;position:relative;touch-action:none";
   const image = document.createElement("img");
   image.alt = "";
   image.draggable = false;
+  image.setAttribute("data-codex-browser-frame", "");
+  image.style.cssText =
+    "display:block;height:100%;object-fit:fill;pointer-events:auto;user-select:none;width:100%;-webkit-user-drag:none";
   const keyboardInput = document.createElement("textarea");
   keyboardInput.autocapitalize = "off";
   keyboardInput.autocomplete = "off";
   keyboardInput.spellcheck = false;
-  shadow.append(style, image, keyboardInput);
+  keyboardInput.setAttribute("data-codex-browser-keyboard-input", "");
+  keyboardInput.style.cssText =
+    "background:transparent;border:0;caret-color:transparent;height:1px;margin:0;opacity:0.01;padding:0;pointer-events:none;position:absolute;resize:none;width:1px;z-index:-1";
+  element.append(image, keyboardInput);
 
   if (!element.hasAttribute("tabindex")) {
     element.tabIndex = 0;
@@ -215,7 +231,7 @@ function enhanceWebview(element: HTMLElement): void {
     frameHeight: 720,
     frameWidth: 1280,
     image,
-    instanceId: ++instanceSequence,
+    instanceId: ++runtime.instanceSequence,
     keyboardInput,
     resizeObserver:
       typeof ResizeObserver === "function"
@@ -248,7 +264,7 @@ function syncConnection(state: ViewState): void {
     for (const attribute of state.element.attributes) {
       params[attribute.name] = attribute.value;
     }
-    sendMessage?.({
+    runtime.sendMessage?.({
       type: "browser-webview-create",
       viewId: state.viewId,
       instanceId: state.instanceId,
@@ -269,7 +285,10 @@ function syncConnection(state: ViewState): void {
     }
     state.attached = false;
     state.resizeObserver?.disconnect();
-    sendMessage?.({ type: "browser-webview-destroy", viewId: state.viewId });
+    runtime.sendMessage?.({
+      type: "browser-webview-destroy",
+      viewId: state.viewId,
+    });
     views.delete(state.viewId);
   }, 500);
 }
@@ -419,13 +438,13 @@ function installKeyboardInput(state: ViewState): void {
     if (event.target === state.keyboardInput) {
       return;
     }
-    sendKeyEvent(state, "keyDown", event);
+    forwardHostKeyEvent(state, "keyDown", event);
   });
   state.element.addEventListener("keyup", (event) => {
     if (event.target === state.keyboardInput) {
       return;
     }
-    sendKeyEvent(state, "keyUp", event);
+    forwardHostKeyEvent(state, "keyUp", event);
   });
 
   let composing = false;
@@ -469,6 +488,66 @@ function installKeyboardInput(state: ViewState): void {
       sendKeyEvent(state, "keyUp", event);
     }
   });
+}
+
+function installKeyboardCapture(): void {
+  if (typeof window.addEventListener !== "function") {
+    return;
+  }
+  for (const type of ["keydown", "keyup"] as const) {
+    window.addEventListener(
+      type,
+      (event) => {
+        const activeElement = document.activeElement;
+        if (!(activeElement instanceof HTMLElement)) {
+          return;
+        }
+        const state = statesByElement.get(activeElement);
+        if (!state || event.target === state.keyboardInput) {
+          return;
+        }
+        // Upstream listens during capture and redirects printable keys to the
+        // composer. The preload installs this earlier capture listener so a
+        // focused Browser surface owns its keystrokes exclusively.
+        forwardHostKeyEvent(
+          state,
+          type === "keydown" ? "keyDown" : "keyUp",
+          event,
+        );
+      },
+      true,
+    );
+  }
+}
+
+function forwardHostKeyEvent(
+  state: ViewState,
+  type: "keyDown" | "keyUp",
+  event: KeyboardEvent,
+): void {
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation();
+  sendKeyEvent(state, type, event);
+  if (type === "keyDown" && isPrintableKey(event)) {
+    sendCommand(state, "sendInputEvent", [
+      {
+        type: "char",
+        keyCode: event.key,
+        modifiers: pointerModifiers(event),
+      },
+    ]);
+  }
+}
+
+function isPrintableKey(event: KeyboardEvent): boolean {
+  return (
+    !event.isComposing &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    event.key.length === 1
+  );
 }
 
 function focusSoftwareKeyboard(
@@ -602,7 +681,7 @@ function sendCommand(state: ViewState, method: string, args: unknown[]): void {
   if (!state.attached) {
     return;
   }
-  sendMessage?.({
+  runtime.sendMessage?.({
     type: "browser-webview-command",
     viewId: state.viewId,
     method,

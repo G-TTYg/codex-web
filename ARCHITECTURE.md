@@ -98,6 +98,15 @@ separate lazy `src/server/browser-host-electron.ts` process with sandboxing,
 context isolation, and offscreen rendering. This avoids iframe CSP and
 `X-Frame-Options` failures and keeps untrusted page code out of the plain-Node
 shell process. The sidecar accepts only the exact pinned Electron version.
+The painted surface uses inline-styled light DOM instead of a shadow root:
+`webview` is not a valid autonomous custom-element name, so ordinary Edge and
+WebKit may reject it as a shadow host even though Electron accepts it. Its
+preload runtime is idempotent across duplicate evaluation. While the surface is
+focused, an early capture listener owns keyboard events, forwards a native
+key-down/character/key-up sequence to the guest, and prevents the renderer's
+global composer shortcut from consuming the same text. Headless window methods
+such as `showInactive()` retain their Electron focus semantics without trying
+to reveal a second host window.
 
 `src/server/auth.ts` owns the optional shared-password boundary enabled by
 `CODEX_WEB_AUTH_PASSWORD`. A Fastify request hook protects the renderer,

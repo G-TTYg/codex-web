@@ -36,6 +36,7 @@ class FakeEventTarget {
 }
 
 class FakeStyle {
+  cssText = "";
   left = "";
   top = "";
 }
@@ -61,17 +62,19 @@ class FakeElement extends FakeEventTarget {
   }
 
   attachShadow() {
-    const shadow = new FakeElement();
-    this.shadow = shadow;
-    return shadow;
+    throw new Error("webview cannot host a shadow root in an ordinary browser");
   }
 
   blur() {
     this.active = false;
+    if (globalThis.document?.activeElement === this) {
+      globalThis.document.activeElement = null;
+    }
   }
 
   focus() {
     this.active = true;
+    globalThis.document.activeElement = this;
   }
 
   getBoundingClientRect() {
@@ -95,6 +98,10 @@ class FakeDocument {
 
   createElement() {
     return new FakeElement();
+  }
+
+  querySelectorAll() {
+    return [];
   }
 }
 
@@ -127,11 +134,19 @@ async function loadElectronShimModule() {
 }
 
 function installFakeDom() {
+  delete globalThis[Symbol.for("codex-web.browser-webview-runtime")];
+  FakeDocument.prototype.createElement = function createElement() {
+    return new FakeElement();
+  };
   const document = new FakeDocument();
+  const windowTarget = new FakeEventTarget();
+  windowTarget.setTimeout = globalThis.setTimeout;
+  windowTarget.clearTimeout = globalThis.clearTimeout;
   const mutationObservers = [];
   globalThis.Document = FakeDocument;
+  globalThis.HTMLElement = FakeElement;
   globalThis.document = document;
-  globalThis.window = globalThis;
+  globalThis.window = windowTarget;
   globalThis.MutationObserver = class {
     constructor(callback) {
       this.callback = callback;
@@ -146,6 +161,9 @@ function installFakeDom() {
   };
   return {
     document,
+    emitWindow(type, event) {
+      windowTarget.emit(type, event);
+    },
     flushMutations() {
       for (const observer of mutationObservers) {
         observer.callback();
@@ -189,8 +207,8 @@ test("remote webview uses the native slot and touch-only input transport", async
     height: 600,
   });
 
-  const image = element.shadow.children[1];
-  const keyboard = element.shadow.children[2];
+  const image = element.children[0];
+  const keyboard = element.children[1];
   image.emit("pointerdown", {
     altKey: false,
     button: 0,
@@ -235,6 +253,73 @@ test("remote webview uses the native slot and touch-only input transport", async
   assert.equal(keyboard.active, true);
   assert.equal(keyboard.inputMode, "search");
   assert.equal(image.src, "data:image/jpeg;base64,frame");
+  assert.equal(element.shadow, undefined);
+
+  let prevented = 0;
+  let stopped = 0;
+  let stoppedImmediately = 0;
+  const keyboardEvent = {
+    altKey: false,
+    code: "KeyX",
+    ctrlKey: false,
+    isComposing: false,
+    key: "x",
+    metaKey: false,
+    preventDefault() {
+      prevented += 1;
+    },
+    shiftKey: false,
+    stopPropagation() {
+      stopped += 1;
+    },
+    stopImmediatePropagation() {
+      stoppedImmediately += 1;
+    },
+    target: element,
+  };
+  element.focus();
+  fakeDom.emitWindow("keydown", keyboardEvent);
+  fakeDom.emitWindow("keyup", keyboardEvent);
+  assert.deepEqual(
+    messages
+      .filter(
+        (message) =>
+          message.type === "browser-webview-command" &&
+          message.method === "sendInputEvent",
+      )
+      .slice(-3)
+      .map((message) => message.args[0].type),
+    ["keyDown", "char", "keyUp"],
+  );
+  assert.equal(prevented, 2);
+  assert.equal(stopped, 2);
+  assert.equal(stoppedImmediately, 2);
+});
+
+test("webview installation is idempotent across duplicate preload evaluation", async () => {
+  const fakeDom = installFakeDom();
+  const firstMessages = [];
+  const secondMessages = [];
+  const firstModule = await loadBrowserWebviewModule();
+  const secondModule = await loadBrowserWebviewModule();
+
+  firstModule.installBrowserWebviews((message) => firstMessages.push(message));
+  secondModule.installBrowserWebviews((message) =>
+    secondMessages.push(message),
+  );
+
+  const element = fakeDom.document.createElement("webview");
+  element.isConnected = true;
+  fakeDom.flushMutations();
+
+  assert.equal(firstMessages.length, 0);
+  assert.equal(
+    secondMessages.filter(
+      (message) => message.type === "browser-webview-create",
+    ).length,
+    1,
+  );
+  assert.equal(element.children.length, 2);
 });
 
 test("Browser host remains a runtime dependency and preserves native attach lifecycle", async () => {
@@ -284,6 +369,10 @@ test("Electron shim attaches a remote guest and forwards native page state", asy
 
   const electron = await loadElectronShimModule();
   const ownerWindow = new electron.BrowserWindow();
+  const backgroundWindow = new electron.BrowserWindow();
+  ownerWindow.focus();
+  backgroundWindow.showInactive();
+  assert.equal(electron.BrowserWindow.getFocusedWindow(), ownerWindow);
   const browserSession = electron.session.fromPartition("persist:browser");
   browserSession.webRequest.onBeforeRequest((details, callback) => {
     callback({ cancel: details.url === "https://blocked.test/" });
