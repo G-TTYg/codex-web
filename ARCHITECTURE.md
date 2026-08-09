@@ -95,9 +95,14 @@ native `will-attach-webview` / `did-attach-webview` lifecycle so the unmodified
 Desktop Browser manager continues to own tabs, navigation, find, zoom, page
 state, preload IPC, and Computer Use handles. The page itself runs in the
 separate lazy `src/server/browser-host-electron.ts` process with sandboxing,
-context isolation, and offscreen rendering. This avoids iframe CSP and
-`X-Frame-Options` failures and keeps untrusted page code out of the plain-Node
-shell process. The sidecar accepts only the exact pinned Electron version.
+context isolation, and offscreen rendering. Each tab is a real
+`WebContentsView`; all tabs share one transparent, non-focusable, never-shown
+`BaseWindow` that only supplies compositor bounds. Electron 42 renders a fully
+detached offscreen view at 0x0, so this single native backing surface is
+required, but no tab owns a `BrowserWindow` or an independently revealable host
+window. This avoids iframe CSP and `X-Frame-Options` failures and keeps
+untrusted page code out of the plain-Node shell process. The sidecar accepts
+only the exact pinned Electron version.
 The painted surface uses inline-styled light DOM instead of a shadow root:
 `webview` is not a valid autonomous custom-element name, so ordinary Edge and
 WebKit may reject it as a shadow host even though Electron accepts it. Its
@@ -106,12 +111,13 @@ focused, an early capture listener owns keyboard events, forwards a native
 key-down/character/key-up sequence to the guest, and prevents the renderer's
 global composer shortcut from consuming the same text. Headless window methods
 such as `showInactive()` retain their Electron focus semantics without trying
-to reveal a second host window. Chromium's real offscreen owner starts hidden,
+to reveal a second host window. The shared compositor host starts hidden,
 transparent, frameless, off-display, non-focusable, and outside the taskbar; it
-reasserts those invariants before any unexpected ready/show/focus path can
-expose it. Renderer-side `RemoteWebContents` keeps logical focus, while direct
-guest input injection deliberately never focuses the native owner. Native
-DevTools are disabled because they would create another host-owned window.
+reasserts those invariants after sizing and before any unexpected show or focus
+path can expose it. Renderer-side `RemoteWebContents` keeps logical focus,
+while direct guest input injection deliberately never focuses the native
+owner. Native DevTools are disabled because they would create another
+host-owned window.
 
 `src/server/auth.ts` owns the optional shared-password boundary enabled by
 `CODEX_WEB_AUTH_PASSWORD`. A Fastify request hook protects the renderer,

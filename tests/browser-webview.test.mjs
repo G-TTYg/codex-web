@@ -344,18 +344,24 @@ test("Browser host remains a runtime dependency and preserves native attach life
   assert.match(electronShim, /"will-attach-webview"/);
   assert.match(electronShim, /"did-attach-webview"/);
   assert.match(electronShim, /new RemoteWebContents\(/);
+  assert.match(browserHost, /let hostWindow: BaseWindow \| null = null/);
+  assert.match(browserHost, /new BaseWindow\(/);
+  assert.match(browserHost, /new WebContentsView\(/);
+  assert.equal(browserHost.match(/new BaseWindow\(/g)?.length, 1);
+  assert.match(browserHost, /window\.contentView\.addChildView\(view\)/);
+  assert.doesNotMatch(browserHost, /new BrowserWindow\(/);
   assert.match(browserHost, /focusable:\s*false/);
   assert.match(browserHost, /frame:\s*false/);
   assert.match(browserHost, /hasShadow:\s*false/);
   assert.match(browserHost, /opacity:\s*0/);
   assert.match(browserHost, /show:\s*false/);
   assert.match(browserHost, /skipTaskbar:\s*true/);
-  assert.match(browserHost, /paintWhenInitiallyHidden:\s*true/);
-  assert.match(browserHost, /browserWindow\.on\("show"/);
-  assert.match(browserHost, /browserWindow\.on\("ready-to-show"/);
-  assert.match(browserHost, /browserWindow\.setOpacity\(0\)/);
-  assert.match(browserHost, /browserWindow\.setPosition\(/);
-  assert.match(browserHost, /browserWindow\.setFocusable\(false\)/);
+  assert.match(browserHost, /offscreen:\s*\{ useSharedTexture: false \}/);
+  assert.match(browserHost, /window\.on\("show"/);
+  assert.match(browserHost, /window\.on\("focus"/);
+  assert.match(browserHost, /window\.setOpacity\(0\)/);
+  assert.match(browserHost, /window\.setPosition\(/);
+  assert.match(browserHost, /window\.setFocusable\(false\)/);
   assert.doesNotMatch(
     browserHost,
     /case "focus":[\s\S]*?webContents\.focus\(\)/,

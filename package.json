@@ -29,6 +29,7 @@
     "prepare:asar": "bash ./scripts/unix/prepare-asar.sh",
     "preserver": "npm run build:server && npm run build:browser",
     "test:auth": "node --test ./tests/auth.test.mjs",
+    "test:browser-host-electron": "npm run build:server && node --test ./tests/browser-host-electron.test.mjs",
     "test:browser-webview": "node --test ./tests/browser-webview.test.mjs",
     "test:mobile-layout": "node --test ./tests/mobile-layout.test.mjs",
     "test:mobile-keyboard": "node --test ./tests/mobile-keyboard.test.mjs",

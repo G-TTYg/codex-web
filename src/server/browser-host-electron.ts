@@ -2,13 +2,14 @@ import path from "node:path";
 
 import {
   app,
-  BrowserWindow,
+  BaseWindow,
   ipcMain,
   session,
   type KeyboardInputEvent,
   type MouseInputEvent,
   type MouseWheelInputEvent,
   type WebContents,
+  WebContentsView,
 } from "electron";
 
 import {
@@ -22,9 +23,11 @@ import {
 type HostedPage = {
   editableRects: BrowserEditableRect[];
   editableRefreshPending: boolean;
+  height: number;
   lastFrameAt: number;
   suppressClosedMessage: boolean;
-  window: BrowserWindow;
+  view: WebContentsView;
+  width: number;
 };
 
 type PendingHostRequest = {
@@ -35,6 +38,8 @@ type PendingHostRequest = {
 const FRAME_INTERVAL_MS = 66;
 const EDITABLE_REFRESH_INTERVAL_MS = 250;
 const OFFSCREEN_WINDOW_ORIGIN = -32_000;
+const MIN_PAGE_HEIGHT = 160;
+const MIN_PAGE_WIDTH = 240;
 const pages = new Map<string, HostedPage>();
 const pageSessionIdsByWebContentsId = new Map<number, string>();
 const configuredPartitions = new Set<string>();
@@ -42,6 +47,7 @@ const installedInvokeChannels = new Set<string>();
 const pendingHostRequests = new Map<string, PendingHostRequest>();
 let shuttingDown = false;
 let hostRequestSequence = 0;
+let hostWindow: BaseWindow | null = null;
 
 function send(message: BrowserHostToServerMessage): void {
   process.send?.(message);
@@ -175,8 +181,8 @@ function stateFor(webContents: WebContents): BrowserHostState {
     };
   }
   return {
-    canGoBack: webContents.canGoBack(),
-    canGoForward: webContents.canGoForward(),
+    canGoBack: webContents.navigationHistory.canGoBack(),
+    canGoForward: webContents.navigationHistory.canGoForward(),
     historyIndex: webContents.navigationHistory.getActiveIndex(),
     isLoading: webContents.isLoading(),
     isLoadingMainFrame: webContents.isLoadingMainFrame(),
@@ -214,7 +220,7 @@ function emitEvent(
   eventKeys: readonly string[] = [],
 ): void {
   const page = pages.get(sessionId);
-  if (!page || page.window.webContents.isDestroyed()) {
+  if (!page || page.view.webContents.isDestroyed()) {
     return;
   }
   send({
@@ -223,7 +229,7 @@ function emitEvent(
     name,
     eventData: eventData(event, eventKeys),
     args: sanitize(args) as unknown[],
-    state: stateFor(page.window.webContents),
+    state: stateFor(page.view.webContents),
   });
 }
 
@@ -373,7 +379,7 @@ function installEventForwarding(
 }
 
 function installFrameForwarding(sessionId: string, page: HostedPage): void {
-  const webContents = page.window.webContents;
+  const webContents = page.view.webContents;
   webContents.setFrameRate(15);
   webContents.on("paint", (_event, _dirtyRect, image) => {
     const now = Date.now();
@@ -381,14 +387,13 @@ function installFrameForwarding(sessionId: string, page: HostedPage): void {
       return;
     }
     page.lastFrameAt = now;
-    const [width = 1280, height = 720] = page.window.getContentSize();
     send({
       type: "frame",
       sessionId,
       data: image.toJPEG(72),
       editableRects: page.editableRects,
-      width,
-      height,
+      width: page.width,
+      height: page.height,
     });
     scheduleEditableRefresh(sessionId);
   });
@@ -402,10 +407,10 @@ function scheduleEditableRefresh(sessionId: string, immediate = false): void {
   page.editableRefreshPending = true;
   const run = (): void => {
     const current = pages.get(sessionId);
-    if (!current || current.window.webContents.isDestroyed()) {
+    if (!current || current.view.webContents.isDestroyed()) {
       return;
     }
-    void current.window.webContents
+    void current.view.webContents
       .executeJavaScript(
         `(() => Array.from(document.querySelectorAll(
         'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), [contenteditable=""], [contenteditable="true"]'
@@ -426,7 +431,7 @@ function scheduleEditableRefresh(sessionId: string, immediate = false): void {
       .then((rects: unknown) => {
         if (pages.get(sessionId) === current && Array.isArray(rects)) {
           current.editableRects = rects.filter(isEditableRect);
-          current.window.webContents.invalidate();
+          current.view.webContents.invalidate();
         }
       })
       .catch(() => undefined)
@@ -452,43 +457,93 @@ function isEditableRect(value: unknown): value is BrowserEditableRect {
   );
 }
 
-function enforceOffscreenWindow(browserWindow: BrowserWindow): void {
-  // Chromium still needs an owner surface for offscreen paint, but that owner
-  // is never part of the product UI. Opacity and off-display placement make a
-  // future Electron show path fail closed before the asynchronous `show` event
-  // can hide it again.
-  const conceal = (): void => {
-    if (browserWindow.isDestroyed()) {
-      return;
-    }
-    browserWindow.setFocusable(false);
-    if (browserWindow.getOpacity() !== 0) {
-      browserWindow.setOpacity(0);
-    }
-    browserWindow.setSkipTaskbar(true);
-    if (browserWindow.isVisible()) {
-      browserWindow.setPosition(
-        OFFSCREEN_WINDOW_ORIGIN,
-        OFFSCREEN_WINDOW_ORIGIN,
-        false,
-      );
-      browserWindow.hide();
-    }
-  };
-  browserWindow.setFocusable(false);
-  browserWindow.setSkipTaskbar(true);
-  browserWindow.on("ready-to-show", conceal);
-  browserWindow.on("show", conceal);
-  browserWindow.on("focus", () => {
-    if (!browserWindow.isDestroyed()) {
-      browserWindow.blur();
-      conceal();
+function concealOffscreenHost(window: BaseWindow): void {
+  // Electron 42 gives a completely detached WebContentsView a 0x0 compositor.
+  // One shared BaseWindow supplies only native bounds; it must never become a
+  // Browser tab window or any other visible part of the product.
+  if (window.isDestroyed()) {
+    return;
+  }
+  window.setFocusable(false);
+  if (window.getOpacity() !== 0) {
+    window.setOpacity(0);
+  }
+  window.setSkipTaskbar(true);
+  window.setPosition(OFFSCREEN_WINDOW_ORIGIN, OFFSCREEN_WINDOW_ORIGIN, false);
+  if (window.isVisible()) {
+    window.hide();
+  }
+}
+
+function enforceOffscreenHost(window: BaseWindow): void {
+  concealOffscreenHost(window);
+  window.on("show", () => concealOffscreenHost(window));
+  window.on("focus", () => {
+    if (!window.isDestroyed()) {
+      window.blur();
+      concealOffscreenHost(window);
     }
   });
-  browserWindow.webContents.on("devtools-opened", () => {
-    browserWindow.webContents.closeDevTools();
-    conceal();
+}
+
+function closePagesAfterHostLoss(window: BaseWindow): void {
+  if (hostWindow !== window) {
+    return;
+  }
+  hostWindow = null;
+  for (const [sessionId, page] of [...pages]) {
+    pages.delete(sessionId);
+    const webContents = page.view.webContents;
+    pageSessionIdsByWebContentsId.delete(webContents.id);
+    if (!webContents.isDestroyed()) {
+      webContents.close({ waitForBeforeUnload: false });
+    }
+    if (!page.suppressClosedMessage && !shuttingDown) {
+      send({
+        type: "closed",
+        sessionId,
+        errorMessage: "The shared Browser rendering host closed.",
+      });
+    }
+  }
+}
+
+function ensureHostWindow(width: number, height: number): BaseWindow {
+  if (hostWindow && !hostWindow.isDestroyed()) {
+    return hostWindow;
+  }
+  const window = new BaseWindow({
+    focusable: false,
+    frame: false,
+    hasShadow: false,
+    opacity: 0,
+    show: false,
+    skipTaskbar: true,
+    useContentSize: true,
+    width,
+    height,
+    x: OFFSCREEN_WINDOW_ORIGIN,
+    y: OFFSCREEN_WINDOW_ORIGIN,
   });
+  hostWindow = window;
+  enforceOffscreenHost(window);
+  window.once("closed", () => closePagesAfterHostLoss(window));
+  return window;
+}
+
+function resizeHostWindow(): void {
+  const window = hostWindow;
+  if (!window || window.isDestroyed()) {
+    return;
+  }
+  let width = MIN_PAGE_WIDTH;
+  let height = MIN_PAGE_HEIGHT;
+  for (const page of pages.values()) {
+    width = Math.max(width, page.width);
+    height = Math.max(height, page.height);
+  }
+  window.setContentSize(width, height, false);
+  concealOffscreenHost(window);
 }
 
 function createPage(options: BrowserHostCreateOptions): void {
@@ -498,19 +553,10 @@ function createPage(options: BrowserHostCreateOptions): void {
   for (const channel of options.ipcInvokeChannels) {
     ensureInvokeChannel(channel);
   }
-  const browserWindow = new BrowserWindow({
-    focusable: false,
-    frame: false,
-    hasShadow: false,
-    opacity: 0,
-    paintWhenInitiallyHidden: true,
-    show: false,
-    skipTaskbar: true,
-    useContentSize: true,
-    width: Math.max(240, Math.round(options.width)),
-    height: Math.max(160, Math.round(options.height)),
-    x: OFFSCREEN_WINDOW_ORIGIN,
-    y: OFFSCREEN_WINDOW_ORIGIN,
+  const width = Math.max(MIN_PAGE_WIDTH, Math.round(options.width));
+  const height = Math.max(MIN_PAGE_HEIGHT, Math.round(options.height));
+  const window = ensureHostWindow(width, height);
+  const view = new WebContentsView({
     webPreferences: {
       additionalArguments: options.additionalArguments,
       backgroundThrottling: false,
@@ -525,25 +571,33 @@ function createPage(options: BrowserHostCreateOptions): void {
       webviewTag: false,
     },
   });
-  enforceOffscreenWindow(browserWindow);
+  view.setBounds({ x: 0, y: 0, width, height });
   const page: HostedPage = {
     editableRects: [],
     editableRefreshPending: false,
+    height,
     lastFrameAt: 0,
     suppressClosedMessage: false,
-    window: browserWindow,
+    view,
+    width,
   };
   pages.set(options.sessionId, page);
-  pageSessionIdsByWebContentsId.set(
-    browserWindow.webContents.id,
-    options.sessionId,
-  );
-  installEventForwarding(options.sessionId, browserWindow.webContents);
+  window.contentView.addChildView(view);
+  resizeHostWindow();
+  const webContents = view.webContents;
+  pageSessionIdsByWebContentsId.set(webContents.id, options.sessionId);
+  installEventForwarding(options.sessionId, webContents);
   installFrameForwarding(options.sessionId, page);
-  browserWindow.once("closed", () => {
-    pageSessionIdsByWebContentsId.delete(browserWindow.webContents.id);
-    if (pages.get(options.sessionId) === page) {
-      pages.delete(options.sessionId);
+  webContents.on("devtools-opened", () => webContents.closeDevTools());
+  webContents.once("destroyed", () => {
+    pageSessionIdsByWebContentsId.delete(webContents.id);
+    if (pages.get(options.sessionId) !== page) {
+      return;
+    }
+    pages.delete(options.sessionId);
+    if (hostWindow && !hostWindow.isDestroyed()) {
+      hostWindow.contentView.removeChildView(view);
+      resizeHostWindow();
     }
     if (!page.suppressClosedMessage) {
       send({ type: "closed", sessionId: options.sessionId });
@@ -552,7 +606,7 @@ function createPage(options: BrowserHostCreateOptions): void {
   send({
     type: "created",
     sessionId: options.sessionId,
-    state: stateFor(browserWindow.webContents),
+    state: stateFor(webContents),
   });
 }
 
@@ -562,12 +616,20 @@ function destroyPage(sessionId: string, suppressClosedMessage = false): void {
     return;
   }
   pages.delete(sessionId);
-  if (!page.window.webContents.isDestroyed()) {
-    pageSessionIdsByWebContentsId.delete(page.window.webContents.id);
-  }
   page.suppressClosedMessage = suppressClosedMessage;
-  if (!page.window.isDestroyed()) {
-    page.window.destroy();
+  const webContents = page.view.webContents;
+  if (!webContents.isDestroyed()) {
+    pageSessionIdsByWebContentsId.delete(webContents.id);
+  }
+  if (hostWindow && !hostWindow.isDestroyed()) {
+    hostWindow.contentView.removeChildView(page.view);
+  }
+  if (!webContents.isDestroyed()) {
+    webContents.close({ waitForBeforeUnload: false });
+  }
+  resizeHostWindow();
+  if (!suppressClosedMessage) {
+    send({ type: "closed", sessionId });
   }
 }
 
@@ -577,10 +639,10 @@ async function runCommand(
   args: unknown[],
 ): Promise<unknown> {
   const page = pages.get(sessionId);
-  if (!page || page.window.isDestroyed()) {
+  if (!page || page.view.webContents.isDestroyed()) {
     throw new Error(`Browser page is not available: ${sessionId}`);
   }
-  const webContents = page.window.webContents;
+  const webContents = page.view.webContents;
   switch (method) {
     case "loadURL":
       return await webContents.loadURL(String(args[0]), args[1] as never);
@@ -657,10 +719,22 @@ async function runCommand(
       // native owner: focusing it can let Windows reveal an Electron surface.
       return undefined;
     case "resize":
-      page.window.setContentSize(
-        Math.max(240, Math.round(Number(args[0]) || 240)),
-        Math.max(160, Math.round(Number(args[1]) || 160)),
+      page.width = Math.max(
+        MIN_PAGE_WIDTH,
+        Math.round(Number(args[0]) || MIN_PAGE_WIDTH),
       );
+      page.height = Math.max(
+        MIN_PAGE_HEIGHT,
+        Math.round(Number(args[1]) || MIN_PAGE_HEIGHT),
+      );
+      page.view.setBounds({
+        x: 0,
+        y: 0,
+        width: page.width,
+        height: page.height,
+      });
+      resizeHostWindow();
+      webContents.invalidate();
       return undefined;
     case "setZoomFactor":
       webContents.setZoomFactor(Number(args[0]) || 1);
@@ -767,7 +841,7 @@ async function handleMessage(
         name: "host-command-error",
         args: [message.method, errorMessage(error)],
         state: pages.has(message.sessionId)
-          ? stateFor(pages.get(message.sessionId)!.window.webContents)
+          ? stateFor(pages.get(message.sessionId)!.view.webContents)
           : {
               canGoBack: false,
               canGoForward: false,

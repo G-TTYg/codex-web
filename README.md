@@ -75,7 +75,9 @@ otherwise it downloads the pinned x64 or arm64 Store MSIX and extracts it into
 ignored project state. all three hosts download and verify the pinned CLI for
 their OS and architecture. the pinned Electron runtime is also a production
 dependency: codex-web starts it lazily and offscreen only when the built-in
-Browser panel needs to host a page.
+Browser panel needs to host a page. Browser tabs are isolated
+`WebContentsView` guests behind one shared, never-shown compositor host; they
+do not create per-tab desktop windows.
 
 for development, install dependencies without the lifecycle build and invoke
 the same build entry explicitly:
@@ -257,9 +259,10 @@ someone with access to the web UI may be able to:
   - Codex Micro discovery and control through host-native `node-hid` and
     `serialport`
   - the official standalone Computer Use Node runtime on Windows and macOS
-  - the built-in Browser panel through an isolated, lazy offscreen Electron
-    guest host, including native navigation state, rendered page frames,
-    mouse/keyboard input, and touch tap/drag/scroll input
+  - the built-in Browser panel through isolated offscreen Electron
+    `WebContentsView` guests on one shared non-UI host, including native
+    navigation state, rendered page frames, mouse/keyboard input, and touch
+    tap/drag/scroll input
   - inline images
   - editor sidepanel
   - transcription
