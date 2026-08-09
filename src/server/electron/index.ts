@@ -1,3 +1,10 @@
+import type {
+  BrowserEditableRect,
+  BrowserHostCreateOptions,
+  BrowserHostEventMessage,
+  BrowserHostState,
+} from "../browser-host-protocol";
+
 type StubFunction = (...args: unknown[]) => unknown;
 type StubListener = (...args: unknown[]) => void;
 type StubMessagePort = {
@@ -6,6 +13,7 @@ type StubMessagePort = {
   postMessage: (message: unknown) => void;
   start: () => void;
 };
+type StubSession = ReturnType<typeof createSessionStub>;
 type StubWebContents = {
   id: number;
   mainFrame: {
@@ -53,6 +61,72 @@ type IpcMainBridgeState = {
     args: unknown[],
     sourceUrl?: string,
   ) => void;
+  handleRendererWebviewCommand?: (
+    viewId: string,
+    method: string,
+    args: unknown[],
+  ) => void;
+  handleRendererWebviewCreate?: (
+    message: {
+      height: number;
+      instanceId: number;
+      params: Record<string, string | number>;
+      type: "browser-webview-create";
+      viewId: string;
+      width: number;
+    },
+    respond: (message: BrowserWebviewMainMessage) => void,
+  ) => void;
+  handleRendererWebviewDestroy?: (viewId: string) => void;
+  handleRendererWebviewDisconnect?: (viewIds: Iterable<string>) => void;
+};
+
+type BrowserWebviewMainMessage =
+  | {
+      type: "browser-webview-attached";
+      viewId: string;
+    }
+  | {
+      data: string;
+      editableRects: BrowserEditableRect[];
+      height: number;
+      type: "browser-webview-frame";
+      viewId: string;
+      width: number;
+    }
+  | {
+      errorMessage?: string;
+      type: "browser-webview-closed";
+      viewId: string;
+    };
+
+type BrowserHostBridgeState = {
+  command: (
+    sessionId: string,
+    method: string,
+    args?: unknown[],
+  ) => Promise<unknown>;
+  createSession: (
+    options: BrowserHostCreateOptions,
+    callbacks: {
+      onClosed: (errorMessage?: string) => void;
+      onCreated: (state: BrowserHostState) => void;
+      onEvent: (message: BrowserHostEventMessage) => void;
+      onFrame: (frame: {
+        data: Buffer;
+        editableRects: BrowserEditableRect[];
+        height: number;
+        width: number;
+      }) => void;
+      onBeforeRequest: (
+        details: Record<string, unknown>,
+      ) => Promise<{ cancel?: boolean }>;
+      onIpcMessage: (channel: string, args: unknown[]) => void;
+      onIpcInvoke: (channel: string, args: unknown[]) => Promise<unknown>;
+    },
+  ) => void;
+  destroySession: (sessionId: string) => void;
+  notify: (sessionId: string, method: string, args?: unknown[]) => void;
 };
 
 function getIpcMainBridgeState(): IpcMainBridgeState {
@@ -189,8 +263,12 @@ const rendererWebContents: StubWebContents = {
   },
 };
 
-function createIpcMainEvent(ports: StubMessagePort[] = []): IpcMainEvent {
+function createIpcMainEvent(
+  ports: StubMessagePort[] = [],
+  senderOverride?: StubWebContents,
+): IpcMainEvent {
   const sender =
+    senderOverride ??
     (BrowserWindow.fromWebContents(rendererWebContents)
       ?.webContents as unknown as StubWebContents | undefined) ??
     rendererWebContents;
@@ -213,6 +291,20 @@ function createIpcMainEvent(ports: StubMessagePort[] = []): IpcMainEvent {
   return event;
 }
 
+let emitIpcMainFromWebContents: (
+  channel: string,
+  sender: StubWebContents,
+  args: unknown[],
+) => void = () => undefined;
+let getIpcMainInvokeChannels = (): string[] => [];
+let invokeIpcMainFromWebContents: (
+  channel: string,
+  sender: StubWebContents,
+  args: unknown[],
+) => Promise<unknown> = async () => {
+  throw new Error("The ipcMain bridge is not initialized.");
+};
+
 function createIpcMainStub(): {
   handle: (
     channel: string,
@@ -228,6 +320,24 @@ function createIpcMainStub(): {
     (event: unknown, ...args: unknown[]) => unknown
   >();
   const bridgeState = getIpcMainBridgeState();
+
+  emitIpcMainFromWebContents = (channel, sender, args): void => {
+    emitter.emit(channel, createIpcMainEvent([], sender), ...args);
+  };
+  getIpcMainInvokeChannels = (): string[] => [...handlers.keys()];
+  invokeIpcMainFromWebContents = async (
+    channel,
+    sender,
+    args,
+  ): Promise<unknown> => {
+    const handler = handlers.get(channel);
+    if (!handler) {
+      throw new Error(`[electron-main-stub] No ipcMain.handle for ${channel}`);
+    }
+    return await Promise.resolve(
+      handler(createIpcMainEvent([], sender), ...args),
+    );
+  };
 
   const pendingPostMessages = new Map<
     string,
@@ -573,6 +683,14 @@ class BrowserWindow {
     return BrowserWindow.focusedWindow === this && !this.destroyed;
   }
 
+  isVisible(): boolean {
+    return !this.destroyed;
+  }
+
+  isMinimized(): boolean {
+    return false;
+  }
+
   removeMenu(): void {
     log(`BrowserWindow#${this.id}.removeMenu`, []);
   }
@@ -592,6 +710,18 @@ class BrowserWindow {
     return { ...this.bounds };
   }
 
+  getContentBounds(): { height: number; width: number; x: number; y: number } {
+    return this.getBounds();
+  }
+
+  getContentSize(): [number, number] {
+    return [this.bounds.width, this.bounds.height];
+  }
+
+  getSize(): [number, number] {
+    return this.getContentSize();
+  }
+
   setBounds(nextBounds: {
     height?: number;
     width?: number;
@@ -607,6 +737,10 @@ class BrowserWindow {
     };
   }
 
+  setContentSize(width: number, height: number): void {
+    this.setBounds({ width, height });
+  }
+
   show(): void {
     log(`BrowserWindow#${this.id}.show`, []);
   }
@@ -619,6 +753,451 @@ class BrowserWindow {
     log(`BrowserWindow#${this.id}.focus`, []);
     BrowserWindow.focusedWindow = this;
     this.emitter.emit("focus");
+  }
+}
+
+class RemoteNativeImage {
+  constructor(
+    private readonly data: Buffer,
+    private readonly size: { width: number; height: number },
+  ) {}
+
+  isEmpty(): boolean {
+    return this.data.length === 0;
+  }
+
+  getSize(): { width: number; height: number } {
+    return { ...this.size };
+  }
+
+  toPNG(): Buffer {
+    return Buffer.from(this.data);
+  }
+
+  toJPEG(_quality: number): Buffer {
+    return Buffer.from(this.data);
+  }
+
+  toBitmap(): Buffer {
+    return Buffer.from(this.data);
+  }
+
+  toDataURL(): string {
+    return `data:image/png;base64,${this.data.toString("base64")}`;
+  }
+
+  crop(_rect: unknown): RemoteNativeImage {
+    return this;
+  }
+
+  resize(_options: unknown): RemoteNativeImage {
+    return this;
+  }
+}
+
+function getBrowserHostBridge(): BrowserHostBridgeState {
+  const bridge = (
+    globalThis as typeof globalThis & {
+      __codexBrowserHostBridge?: BrowserHostBridgeState;
+    }
+  ).__codexBrowserHostBridge;
+  if (!bridge) {
+    throw new Error("The codex-web Browser host bridge is unavailable.");
+  }
+  return bridge;
+}
+
+const remoteWebContentsById = new Map<number, RemoteWebContents>();
+let focusedRemoteWebContents: RemoteWebContents | null = null;
+let nextRemoteWebContentsId = 50_000;
+
+class RemoteWebContents implements StubWebContents {
+  readonly id = nextRemoteWebContentsId++;
+  readonly mainFrame = { url: "" };
+  readonly hostWebContents: StubWebContents;
+  readonly session: StubSession;
+  readonly viewInstanceId: number;
+  readonly debugger: {
+    attach: (version?: string) => void;
+    detach: () => void;
+    isAttached: () => boolean;
+    sendCommand: (
+      method: string,
+      commandParams?: Record<string, unknown>,
+      sessionId?: string,
+    ) => Promise<unknown>;
+  };
+  readonly navigationHistory: {
+    getActiveIndex: () => number;
+  };
+  private readonly emitter: ReturnType<typeof createEmitterStub>;
+  private destroyed = false;
+  private debuggerAttached = false;
+  private backgroundThrottling = false;
+  private findRequestSequence = 0;
+  private activeFindRequestId: number | null = null;
+  private windowOpenHandler:
+    | ((details: Record<string, unknown>) => unknown)
+    | null = null;
+  private state: BrowserHostState = {
+    canGoBack: false,
+    canGoForward: false,
+    historyIndex: -1,
+    isLoading: false,
+    isLoadingMainFrame: false,
+    title: "",
+    url: "",
+    zoomFactor: 1,
+  };
+
+  constructor(
+    readonly viewId: string,
+    viewInstanceId: number,
+    hostWebContents: StubWebContents,
+    webPreferences: Record<string, unknown>,
+    partition: string,
+    dimensions: { height: number; width: number },
+    private readonly respond: (message: BrowserWebviewMainMessage) => void,
+  ) {
+    this.viewInstanceId = viewInstanceId;
+    this.hostWebContents = hostWebContents;
+    this.session =
+      (webPreferences.session as StubSession | undefined) ??
+      createSessionStub(`RemoteWebContents#${this.id}.session`);
+    this.emitter = createEmitterStub(`RemoteWebContents#${this.id}`);
+    this.navigationHistory = {
+      getActiveIndex: () => this.state.historyIndex,
+    };
+    this.debugger = {
+      attach: (version?: string): void => {
+        this.debuggerAttached = true;
+        this.notify("debugger.attach", [version]);
+      },
+      detach: (): void => {
+        this.debuggerAttached = false;
+        this.notify("debugger.detach");
+      },
+      isAttached: (): boolean => this.debuggerAttached,
+      sendCommand: async (
+        method: string,
+        commandParams?: Record<string, unknown>,
+        sessionId?: string,
+      ): Promise<unknown> =>
+        await this.command("debugger.sendCommand", [
+          method,
+          commandParams,
+          sessionId,
+        ]),
+    };
+
+    remoteWebContentsById.set(this.id, this);
+    const preloadPath =
+      typeof webPreferences.preload === "string"
+        ? webPreferences.preload
+        : undefined;
+    const additionalArguments = Array.isArray(
+      webPreferences.additionalArguments,
+    )
+      ? webPreferences.additionalArguments.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : undefined;
+    getBrowserHostBridge().createSession(
+      {
+        sessionId: viewId,
+        partition: partition || "persist:codex-web-browser",
+        preloadPath,
+        additionalArguments,
+        ipcInvokeChannels: getIpcMainInvokeChannels(),
+        height: dimensions.height,
+        width: dimensions.width,
+      },
+      {
+        onBeforeRequest: async (details) =>
+          await this.session.__dispatchBeforeRequest({
+            ...details,
+            webContentsId: this.id,
+          }),
+        onCreated: (state) => this.applyState(state),
+        onEvent: (message) => this.handleHostEvent(message),
+        onFrame: (frame) => {
+          if (!this.destroyed) {
+            this.respond({
+              type: "browser-webview-frame",
+              viewId,
+              data: frame.data.toString("base64"),
+              editableRects: frame.editableRects,
+              height: frame.height,
+              width: frame.width,
+            });
+          }
+        },
+        onIpcMessage: (channel, args) => {
+          emitIpcMainFromWebContents(channel, this, args);
+        },
+        onIpcInvoke: async (channel, args) =>
+          await invokeIpcMainFromWebContents(channel, this, args),
+        onClosed: (errorMessage) => this.handleHostClosed(errorMessage),
+      },
+    );
+  }
+
+  on(event: string, listener: StubListener): this {
+    this.emitter.on(event, listener);
+    return this;
+  }
+
+  once(event: string, listener: StubListener): this {
+    this.emitter.once(event, listener);
+    return this;
+  }
+
+  off(event: string, listener: StubListener): this {
+    this.emitter.off(event, listener);
+    return this;
+  }
+
+  removeListener(event: string, listener: StubListener): this {
+    this.emitter.removeListener(event, listener);
+    return this;
+  }
+
+  getURL(): string {
+    return this.state.url;
+  }
+
+  getTitle(): string {
+    return this.state.title;
+  }
+
+  isDestroyed(): boolean {
+    return this.destroyed;
+  }
+
+  isLoading(): boolean {
+    return this.state.isLoading;
+  }
+
+  isLoadingMainFrame(): boolean {
+    return this.state.isLoadingMainFrame;
+  }
+
+  isCurrentlyAudible(): boolean {
+    return false;
+  }
+
+  isCapturingUserMedia(): boolean {
+    return false;
+  }
+
+  canGoBack(): boolean {
+    return this.state.canGoBack;
+  }
+
+  canGoForward(): boolean {
+    return this.state.canGoForward;
+  }
+
+  loadURL(url: string, options?: unknown): Promise<unknown> {
+    return this.command("loadURL", [url, options]);
+  }
+
+  reload(): void {
+    this.notify("reload");
+  }
+
+  reloadIgnoringCache(): void {
+    this.notify("reloadIgnoringCache");
+  }
+
+  stop(): void {
+    this.notify("stop");
+  }
+
+  goBack(): void {
+    this.notify("goBack");
+  }
+
+  goForward(): void {
+    this.notify("goForward");
+  }
+
+  executeJavaScript(code: string, userGesture?: boolean): Promise<unknown> {
+    return this.command("executeJavaScript", [code, userGesture]);
+  }
+
+  async capturePage(rect?: unknown): Promise<RemoteNativeImage> {
+    const result = (await this.command("capturePage", [rect])) as {
+      data?: unknown;
+      size?: { height?: unknown; width?: unknown };
+    };
+    const data = Buffer.isBuffer(result?.data) ? result.data : Buffer.from([]);
+    return new RemoteNativeImage(data, {
+      width: typeof result?.size?.width === "number" ? result.size.width : 0,
+      height: typeof result?.size?.height === "number" ? result.size.height : 0,
+    });
+  }
+
+  sendInputEvent(input: unknown): void {
+    this.notify("sendInputEvent", [input]);
+  }
+
+  insertText(text: string): void {
+    this.notify("insertText", [text]);
+  }
+
+  send(channel: string, ...args: unknown[]): void {
+    this.notify("send", [channel, ...args]);
+  }
+
+  focus(): void {
+    focusedRemoteWebContents = this;
+    this.notify("focus");
+  }
+
+  resize(width: unknown, height: unknown): void {
+    this.notify("resize", [width, height]);
+  }
+
+  setZoomFactor(factor: number): void {
+    this.state.zoomFactor = factor;
+    this.notify("setZoomFactor", [factor]);
+  }
+
+  getZoomFactor(): number {
+    return this.state.zoomFactor;
+  }
+
+  setBackgroundThrottling(enabled: boolean): void {
+    this.backgroundThrottling = enabled;
+    this.notify("setBackgroundThrottling", [enabled]);
+  }
+
+  getBackgroundThrottling(): boolean {
+    return this.backgroundThrottling;
+  }
+
+  findInPage(text: string, options?: unknown): number {
+    const requestId = ++this.findRequestSequence;
+    this.activeFindRequestId = requestId;
+    void this.command("findInPage", [text, options]).catch(() => undefined);
+    return requestId;
+  }
+
+  stopFindInPage(action: unknown): void {
+    this.activeFindRequestId = null;
+    this.notify("stopFindInPage", [action]);
+  }
+
+  downloadURL(url: string, options?: unknown): void {
+    this.notify("downloadURL", [url, options]);
+  }
+
+  inspectElement(x: number, y: number): void {
+    this.notify("inspectElement", [x, y]);
+  }
+
+  setWindowOpenHandler(
+    handler: (details: Record<string, unknown>) => unknown,
+  ): void {
+    this.windowOpenHandler = handler;
+  }
+
+  close(): void {
+    this.destroy();
+  }
+
+  destroy(): void {
+    if (this.destroyed) {
+      return;
+    }
+    this.destroyed = true;
+    remoteWebContentsById.delete(this.id);
+    if (focusedRemoteWebContents === this) {
+      focusedRemoteWebContents = null;
+    }
+    getBrowserHostBridge().destroySession(this.viewId);
+    this.emitter.emit("destroyed");
+    this.respond({ type: "browser-webview-closed", viewId: this.viewId });
+  }
+
+  private command(method: string, args: unknown[] = []): Promise<unknown> {
+    if (this.destroyed) {
+      return Promise.reject(new Error("Browser webContents is destroyed."));
+    }
+    return getBrowserHostBridge().command(this.viewId, method, args);
+  }
+
+  private notify(method: string, args: unknown[] = []): void {
+    if (!this.destroyed) {
+      getBrowserHostBridge().notify(this.viewId, method, args);
+    }
+  }
+
+  private applyState(state: BrowserHostState): void {
+    this.state = state;
+    this.mainFrame.url = state.url;
+  }
+
+  private handleHostEvent(message: BrowserHostEventMessage): void {
+    if (this.destroyed) {
+      return;
+    }
+    this.applyState(message.state);
+    if (message.name === "window-open") {
+      this.windowOpenHandler?.(message.eventData ?? {});
+      return;
+    }
+    if (message.name === "host-command-error") {
+      console.error("[browser-host] command failed", message.args);
+      return;
+    }
+
+    let defaultPrevented = false;
+    const event = {
+      ...(message.eventData ?? {}),
+      preventDefault: (): void => {
+        defaultPrevented = true;
+      },
+    };
+    const args = [...message.args];
+    if (
+      message.name === "found-in-page" &&
+      this.activeFindRequestId != null &&
+      typeof args[0] === "object" &&
+      args[0] !== null
+    ) {
+      args[0] = {
+        ...(args[0] as Record<string, unknown>),
+        requestId: this.activeFindRequestId,
+      };
+    }
+    this.emitter.emit(message.name, event, ...args);
+    if (
+      defaultPrevented &&
+      (message.name === "will-frame-navigate" ||
+        message.name === "will-navigate" ||
+        message.name === "will-redirect")
+    ) {
+      this.notify("stop");
+    }
+  }
+
+  private handleHostClosed(errorMessage?: string): void {
+    if (this.destroyed) {
+      return;
+    }
+    this.destroyed = true;
+    remoteWebContentsById.delete(this.id);
+    if (focusedRemoteWebContents === this) {
+      focusedRemoteWebContents = null;
+    }
+    this.emitter.emit("destroyed");
+    this.respond({
+      type: "browser-webview-closed",
+      viewId: this.viewId,
+      errorMessage,
+    });
   }
 }
 
@@ -813,6 +1392,21 @@ const nativeImage = {
       isEmpty: () => !imagePath,
     };
   },
+  createFromBuffer(
+    buffer: Buffer,
+    options?: { height?: number; width?: number },
+  ): RemoteNativeImage {
+    return new RemoteNativeImage(buffer, {
+      height: options?.height ?? 0,
+      width: options?.width ?? 0,
+    });
+  },
+  createFromBitmap(
+    buffer: Buffer,
+    options: { height: number; width: number },
+  ): RemoteNativeImage {
+    return new RemoteNativeImage(buffer, options);
+  },
 };
 const powerMonitor = {
   ...createEmitterStub("powerMonitor"),
@@ -885,6 +1479,9 @@ const protocol = {
   },
 };
 function createSessionStub(label: string): {
+  __dispatchBeforeRequest: (
+    details: Record<string, unknown>,
+  ) => Promise<{ cancel?: boolean }>;
   cookies: {
     get: (filter: Record<string, unknown>) => Promise<unknown[]>;
     on: (event: string, listener: StubListener) => unknown;
@@ -892,6 +1489,11 @@ function createSessionStub(label: string): {
     set: (details: Record<string, unknown>) => Promise<void>;
   };
   getUserAgent: () => string;
+  fetch: typeof fetch;
+  clearCache: () => Promise<void>;
+  clearStorageData: (...args: unknown[]) => Promise<void>;
+  flushStorageData: () => void;
+  getCacheSize: () => Promise<number>;
   loadExtension: (extensionPath: string) => Promise<{
     id: string;
     name: string;
@@ -912,7 +1514,59 @@ function createSessionStub(label: string): {
 } {
   const emitter = createEmitterStub(label);
   const cookieEmitter = createEmitterStub(`${label}.cookies`);
+  let beforeRequestHandler:
+    | ((
+        details: Record<string, unknown>,
+        callback: (response: { cancel?: boolean }) => void,
+      ) => void)
+    | null = null;
   return {
+    async __dispatchBeforeRequest(
+      details: Record<string, unknown>,
+    ): Promise<{ cancel?: boolean }> {
+      if (!beforeRequestHandler) {
+        return {};
+      }
+      const handler = beforeRequestHandler;
+      return await new Promise((resolve, reject) => {
+        let settled = false;
+        const timeout = setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            reject(new Error("Browser request policy timed out."));
+          }
+        }, 10_000);
+        timeout.unref();
+        const callback = (response: { cancel?: boolean }): void => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timeout);
+            resolve(response ?? {});
+          }
+        };
+        try {
+          handler(details, callback);
+        } catch (error) {
+          settled = true;
+          clearTimeout(timeout);
+          reject(error);
+        }
+      });
+    },
+    fetch,
+    async clearCache(): Promise<void> {
+      log(`${label}.clearCache`, []);
+    },
+    async clearStorageData(...args: unknown[]): Promise<void> {
+      log(`${label}.clearStorageData`, args);
+    },
+    flushStorageData(): void {
+      log(`${label}.flushStorageData`, []);
+    },
+    async getCacheSize(): Promise<number> {
+      log(`${label}.getCacheSize`, []);
+      return 0;
+    },
     cookies: {
       async get(filter: Record<string, unknown>): Promise<unknown[]> {
         log(`${label}.cookies.get`, [filter]);
@@ -958,6 +1612,11 @@ function createSessionStub(label: string): {
     webRequest: {
       onBeforeRequest(...args: unknown[]): void {
         log(`${label}.webRequest.onBeforeRequest`, args);
+        const handler = args.findLast(
+          (value): value is typeof beforeRequestHandler =>
+            typeof value === "function",
+        );
+        beforeRequestHandler = handler ?? null;
       },
       onBeforeSendHeaders(...args: unknown[]): void {
         log(`${label}.webRequest.onBeforeSendHeaders`, args);
@@ -989,19 +1648,141 @@ const utilityProcess = {
 const webContents = {
   fromId(id: number): Record<string, unknown> | undefined {
     log("webContents.fromId", [id]);
-    return BrowserWindow.getAllWindows().find(
-      (window) => window.webContents.id === id,
-    )?.webContents;
+    return (remoteWebContentsById.get(id) ??
+      BrowserWindow.getAllWindows().find(
+        (window) => window.webContents.id === id,
+      )?.webContents) as unknown as Record<string, unknown> | undefined;
   },
   getAllWebContents(): Record<string, unknown>[] {
     log("webContents.getAllWebContents", []);
-    return BrowserWindow.getAllWindows().map((window) => window.webContents);
+    return [
+      ...BrowserWindow.getAllWindows().map((window) => window.webContents),
+      ...remoteWebContentsById.values(),
+    ] as unknown as Record<string, unknown>[];
   },
   getFocusedWebContents(): Record<string, unknown> | null {
     log("webContents.getFocusedWebContents", []);
-    return BrowserWindow.getFocusedWindow()?.webContents ?? null;
+    return (focusedRemoteWebContents ??
+      BrowserWindow.getFocusedWindow()?.webContents ??
+      null) as unknown as Record<string, unknown> | null;
   },
 };
+
+function emitWebContentsEvent(
+  target: Record<string, unknown>,
+  event: string,
+  ...args: unknown[]
+): void {
+  const emit = target.emit;
+  if (typeof emit === "function") {
+    Reflect.apply(emit, target, [event, ...args]);
+  }
+}
+
+function installBrowserWebviewBridge(): void {
+  const bridgeState = getIpcMainBridgeState();
+  const remoteViews = new Map<string, RemoteWebContents>();
+
+  bridgeState.handleRendererWebviewCreate = (message, respond): void => {
+    remoteViews.get(message.viewId)?.destroy();
+
+    const owner =
+      (BrowserWindow.fromWebContents(rendererWebContents)
+        ?.webContents as unknown as StubWebContents | undefined) ??
+      rendererWebContents;
+    const params: Record<string, string | number> = {
+      ...message.params,
+      instanceId: message.instanceId,
+    };
+    const webPreferences: Record<string, unknown> = {};
+    let prevented = false;
+    emitWebContentsEvent(
+      owner as unknown as Record<string, unknown>,
+      "will-attach-webview",
+      {
+        preventDefault(): void {
+          prevented = true;
+        },
+      },
+      webPreferences,
+      params,
+    );
+    if (prevented) {
+      respond({
+        type: "browser-webview-closed",
+        viewId: message.viewId,
+        errorMessage: "The Desktop Browser manager rejected this webview.",
+      });
+      return;
+    }
+
+    try {
+      const remote = new RemoteWebContents(
+        message.viewId,
+        message.instanceId,
+        owner,
+        webPreferences,
+        typeof params.partition === "string" ? params.partition : "",
+        { height: message.height, width: message.width },
+        respond,
+      );
+      remoteViews.set(message.viewId, remote);
+      remote.once("destroyed", () => {
+        if (remoteViews.get(message.viewId) === remote) {
+          remoteViews.delete(message.viewId);
+        }
+      });
+      emitWebContentsEvent(
+        owner as unknown as Record<string, unknown>,
+        "did-attach-webview",
+        {},
+        remote,
+      );
+      respond({ type: "browser-webview-attached", viewId: message.viewId });
+    } catch (error) {
+      respond({
+        type: "browser-webview-closed",
+        viewId: message.viewId,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  bridgeState.handleRendererWebviewCommand = (viewId, method, args): void => {
+    const remote = remoteViews.get(viewId);
+    if (!remote || remote.isDestroyed()) {
+      return;
+    }
+    switch (method) {
+      case "resize":
+        remote.resize(args[0], args[1]);
+        break;
+      case "sendInputEvent":
+        remote.sendInputEvent(args[0]);
+        break;
+      case "insertText":
+        remote.insertText(String(args[0] ?? ""));
+        break;
+      case "focus":
+        remote.focus();
+        break;
+    }
+  };
+
+  bridgeState.handleRendererWebviewDestroy = (viewId): void => {
+    remoteViews.get(viewId)?.destroy();
+    remoteViews.delete(viewId);
+  };
+
+  bridgeState.handleRendererWebviewDisconnect = (viewIds): void => {
+    for (const viewId of viewIds) {
+      remoteViews.get(viewId)?.destroy();
+      remoteViews.delete(viewId);
+    }
+  };
+}
+
+installBrowserWebviewBridge();
 class MessageChannelMain {
   port1 = createMessagePortStub("MessageChannelMain.port1");
   port2 = createMessagePortStub("MessageChannelMain.port2");

@@ -22,6 +22,14 @@ import {
   createRendererContextMenuCoordinator,
   type SetRendererContextMenuOpen,
 } from "./context-menu";
+import {
+  handleBrowserWebviewMessage,
+  installBrowserWebviews,
+  markBrowserWebviewsDisconnected,
+  reconnectBrowserWebviews,
+  type BrowserWebviewMainMessage,
+  type BrowserWebviewRendererMessage,
+} from "./browser-webview";
 
 type IpcListener = (event: unknown, ...args: unknown[]) => void;
 
@@ -57,7 +65,8 @@ type RendererToMainMessage =
       requestId: string;
       directoryPath: string | null;
       directoriesOnly: boolean;
-    };
+    }
+  | BrowserWebviewRendererMessage;
 
 type MainToRendererMessage =
   | {
@@ -97,7 +106,8 @@ type MainToRendererMessage =
   | {
       type: "message-port-close";
       portId: string;
-    };
+    }
+  | BrowserWebviewMainMessage;
 
 const RECONNECT_DELAY_MS = 1_000;
 
@@ -183,6 +193,9 @@ export function emitRendererEvent(channel: string, args: unknown[]): void {
 }
 
 function handleIncomingMessage(message: MainToRendererMessage): void {
+  if (handleBrowserWebviewMessage(message)) {
+    return;
+  }
   if (message.type === "ipc-main-event") {
     emitRendererEvent(message.channel, message.args);
     return;
@@ -261,6 +274,7 @@ function ensureSocket(): void {
   );
   socket.addEventListener("open", () => {
     flushOutboundQueue();
+    reconnectBrowserWebviews();
   });
   socket.addEventListener("message", (event) => {
     try {
@@ -274,6 +288,7 @@ function ensureSocket(): void {
     }
   });
   socket.addEventListener("close", () => {
+    markBrowserWebviewsDisconnected();
     for (const port of messagePorts.values()) {
       port.close();
     }
@@ -386,6 +401,7 @@ const electronShim = (window.__ELECTRON_SHIM__ ??= {});
 const buildFlavor: "prod" | "dev" | "agent" | string = "prod";
 
 installClipboardCompatibility();
+installBrowserWebviews(enqueueMessage);
 // Mount-time composer focus is useful with a hardware keyboard, but on touch
 // devices it must not create a software keyboard without a direct tap. Keep the
 // editor DOM/inputmode stable and gate only the renderer's mount-focus action.

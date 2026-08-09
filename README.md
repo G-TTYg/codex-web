@@ -73,13 +73,16 @@ official macOS desktop archive as the renderer source. Windows uses an already
 installed exact `OpenAI.Codex` Microsoft Store package when available;
 otherwise it downloads the pinned x64 or arm64 Store MSIX and extracts it into
 ignored project state. all three hosts download and verify the pinned CLI for
-their OS and architecture.
+their OS and architecture. the pinned Electron runtime is also a production
+dependency: codex-web starts it lazily and offscreen only when the built-in
+Browser panel needs to host a page.
 
 for development, install dependencies without the lifecycle build and invoke
 the same build entry explicitly:
 
 ```bash
 npm ci --ignore-scripts
+npm run install:electron-runtime
 npm run build
 npm run server
 ```
@@ -88,6 +91,13 @@ set `HOSTED_CODEX_APP_ZIP` to an existing official archive or `CODEX_CLI_PATH`
 to an explicit CLI when an override is required. `CODEX_WEB_DOWNLOAD_PROXY`
 routes managed CLI downloads on every host and managed Windows Desktop MSIX
 downloads through a proxy.
+
+package managers that provide Electron outside npm may set
+`CODEX_WEB_ELECTRON_PATH` to the executable. the helper verifies that the
+reported Electron version exactly matches the pinned runtime before accepting
+any Browser page. Nix's offline package build deliberately omits the npm-downloaded
+Electron executable, so its built-in Browser panel requires this override to an
+exactly matching Electron; the rest of codex-web does not start the sidecar.
 
 ### Windows Desktop source overrides
 
@@ -247,6 +257,9 @@ someone with access to the web UI may be able to:
   - Codex Micro discovery and control through host-native `node-hid` and
     `serialport`
   - the official standalone Computer Use Node runtime on Windows and macOS
+  - the built-in Browser panel through an isolated, lazy offscreen Electron
+    guest host, including native navigation state, rendered page frames,
+    mouse/keyboard input, and touch tap/drag/scroll input
   - inline images
   - editor sidepanel
   - transcription
@@ -282,7 +295,6 @@ desktop compatibility upgrade procedure.
 
 some parts of the desktop experience are not wired up yet:
 
-- browser panel support, likely rebuilt around iframes
 - computer use on linux, which could become a very powerful feature
 - git worker integration
 - whatever else people find and file issues for

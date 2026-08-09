@@ -87,6 +87,18 @@ loads the official Desktop main bundle after installing the module alias in
 `src/server/electron/`. The existing MessagePort/app-host forwarding is kept so
 subagents and newer Desktop protocol paths continue to work.
 
+Electron `<webview>` guests are the one renderer contract that cannot execute
+inside an ordinary browser. `src/browser/browser-webview.ts` retains the
+renderer-owned Browser panel slot, paints frames into that slot, and forwards
+explicit mouse, keyboard, and touch input. `src/server/electron/` reproduces the
+native `will-attach-webview` / `did-attach-webview` lifecycle so the unmodified
+Desktop Browser manager continues to own tabs, navigation, find, zoom, page
+state, preload IPC, and Computer Use handles. The page itself runs in the
+separate lazy `src/server/browser-host-electron.ts` process with sandboxing,
+context isolation, and offscreen rendering. This avoids iframe CSP and
+`X-Frame-Options` failures and keeps untrusted page code out of the plain-Node
+shell process. The sidecar accepts only the exact pinned Electron version.
+
 `src/server/auth.ts` owns the optional shared-password boundary enabled by
 `CODEX_WEB_AUTH_PASSWORD`. A Fastify request hook protects the renderer,
 host-file route, uploads, and other HTTP handlers, while the raw server upgrade

@@ -5,6 +5,7 @@
     "README.md",
     "scripts/managed-download.mjs",
     "scripts/managed-runtime.mjs",
+    "scripts/ensure-electron-runtime.mjs",
     "scripts/run-server.mjs",
     "scripts/runtime-versions.json",
     "scripts/tailscale.mjs",
@@ -23,10 +24,12 @@
     "build:browser": "vite build --config vite.browser.config.mjs",
     "build:server": "cd src/server && tsc",
     "rebuild:native": "npm rebuild @serialport/bindings-cpp better-sqlite3 node-hid node-pty",
+    "install:electron-runtime": "node ./scripts/ensure-electron-runtime.mjs",
     "audit:runtime": "node ./scripts/audit-runtime-externals.mjs",
     "prepare:asar": "bash ./scripts/unix/prepare-asar.sh",
     "preserver": "npm run build:server && npm run build:browser",
     "test:auth": "node --test ./tests/auth.test.mjs",
+    "test:browser-webview": "node --test ./tests/browser-webview.test.mjs",
     "test:mobile-layout": "node --test ./tests/mobile-layout.test.mjs",
     "test:mobile-keyboard": "node --test ./tests/mobile-keyboard.test.mjs",
     "test:windows-desktop": "node --test ./tests/windows-managed-desktop.test.mjs",
@@ -43,6 +46,7 @@
     "@tanstack/react-query": "^5.100.9",
     "@types/ws": "^8.18.1",
     "better-sqlite3": "^12.9.0",
+    "electron": "42.3.0",
     "fastify": "^5.11.2",
     "glob": "^13.0.6",
     "node-hid": "3.3.0",
@@ -60,7 +64,6 @@
   "devDependencies": {
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "electron": "42.3.0",
     "http-server": "^14.1.1"
   }
 }

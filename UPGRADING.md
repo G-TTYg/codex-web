@@ -148,6 +148,11 @@ Then verify:
   requests are rejected, a correct login sets the HttpOnly session cookie, and
   that cookie authorizes both renderer assets and IPC;
 - existing and new tasks render;
+- the built-in Browser panel attaches through the native webview lifecycle,
+  loads and navigates a page, updates title/back/forward/loading state, accepts
+  mouse and keyboard input, accepts touch tap/drag/scroll input without a
+  synthetic wheel or right-click path, and tears down its offscreen guest when
+  the panel tab closes;
 - prompt prefill and browser navigation work;
 - phone-width (through 700 CSS pixels) left and right overlay drawers, persistent
   Desktop-style sidebars on full-size portrait and landscape iPads, touch UI on

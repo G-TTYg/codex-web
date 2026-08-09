@@ -38,9 +38,13 @@ if (process.platform === "win32") {
   if (process.env.npm_lifecycle_event === "prepare") {
     setupArguments.push("-SkipInstall");
   }
+  if (process.env.CODEX_WEB_DOWNLOAD_PROXY) {
+    setupArguments.push("-DownloadProxy", process.env.CODEX_WEB_DOWNLOAD_PROXY);
+  }
   if (process.env.CODEX_CLI_PATH) setupArguments.push("-SkipPinnedCli");
   run("powershell.exe", setupArguments);
 } else {
+  run("node", ["./scripts/ensure-electron-runtime.mjs"]);
   // `npm ci --ignore-scripts` intentionally skips native addons. A
   // direct build must restore them for the host Node runtime; during npm's
   // prepare lifecycle their dependency install scripts have already run.

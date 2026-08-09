@@ -17,6 +17,12 @@ import fastifyMultipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import { installModuleAliasHook } from "./module";
 import { createPasswordAuth } from "./auth";
+import { BrowserHost } from "./browser-host";
+import type {
+  BrowserHostCreateOptions,
+  BrowserHostEventMessage,
+  BrowserHostState,
+} from "./browser-host-protocol";
 import { glob } from "glob";
 
 type ServerOptions = {
@@ -59,6 +65,24 @@ type RendererToMainMessage =
       requestId: string;
       directoryPath: string | null;
       directoriesOnly: boolean;
+    }
+  | {
+      height: number;
+      instanceId: number;
+      params: Record<string, string | number>;
+      type: "browser-webview-create";
+      viewId: string;
+      width: number;
+    }
+  | {
+      args: unknown[];
+      method: string;
+      type: "browser-webview-command";
+      viewId: string;
+    }
+  | {
+      type: "browser-webview-destroy";
+      viewId: string;
     };
 
 type MainToRendererMessage =
@@ -99,6 +123,29 @@ type MainToRendererMessage =
   | {
       type: "message-port-close";
       portId: string;
+    }
+  | {
+      type: "browser-webview-attached";
+      viewId: string;
+    }
+  | {
+      data: string;
+      editableRects: Array<{
+        height: number;
+        inputMode: string;
+        width: number;
+        x: number;
+        y: number;
+      }>;
+      height: number;
+      type: "browser-webview-frame";
+      viewId: string;
+      width: number;
+    }
+  | {
+      errorMessage?: string;
+      type: "browser-webview-closed";
+      viewId: string;
     };
 
 type WorkspaceDirectoryEntry = {
@@ -234,6 +281,52 @@ type IpcMainBridgeState = {
     sourceUrl?: string,
   ) => void;
   handleRendererSend?: (channel: string, args: unknown[]) => void;
+  handleRendererWebviewCommand?: (
+    viewId: string,
+    method: string,
+    args: unknown[],
+  ) => void;
+  handleRendererWebviewCreate?: (
+    message: Extract<RendererToMainMessage, { type: "browser-webview-create" }>,
+    respond: (message: MainToRendererMessage) => void,
+  ) => void;
+  handleRendererWebviewDestroy?: (viewId: string) => void;
+  handleRendererWebviewDisconnect?: (viewIds: Iterable<string>) => void;
+};
+
+type BrowserHostBridgeState = {
+  command: (
+    sessionId: string,
+    method: string,
+    args?: unknown[],
+  ) => Promise<unknown>;
+  createSession: (
+    options: BrowserHostCreateOptions,
+    callbacks: {
+      onClosed: (errorMessage?: string) => void;
+      onCreated: (state: BrowserHostState) => void;
+      onEvent: (message: BrowserHostEventMessage) => void;
+      onFrame: (frame: {
+        data: Buffer;
+        editableRects: Array<{
+          height: number;
+          inputMode: string;
+          width: number;
+          x: number;
+          y: number;
+        }>;
+        height: number;
+        width: number;
+      }) => void;
+      onBeforeRequest: (
+        details: Record<string, unknown>,
+      ) => Promise<{ cancel?: boolean }>;
+      onIpcInvoke: (channel: string, args: unknown[]) => Promise<unknown>;
+      onIpcMessage: (channel: string, args: unknown[]) => void;
+    },
+  ) => void;
+  destroySession: (sessionId: string) => void;
+  notify: (sessionId: string, method: string, args?: unknown[]) => void;
 };
 
 function printUsage(): void {
@@ -376,6 +469,18 @@ function ensureElectronLikeProcessContext(electronVersion: string): void {
 
 async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
   const bridgeState = getIpcMainBridgeState();
+  const projectRoot = path.resolve(__dirname, "../..");
+  const browserHost = new BrowserHost(projectRoot);
+  (
+    globalThis as typeof globalThis & {
+      __codexBrowserHostBridge?: BrowserHostBridgeState;
+    }
+  ).__codexBrowserHostBridge = {
+    command: browserHost.command.bind(browserHost),
+    createSession: browserHost.createSession.bind(browserHost),
+    destroySession: browserHost.destroySession.bind(browserHost),
+    notify: browserHost.notify.bind(browserHost),
+  };
   const app = Fastify({ logger: false });
   const websocketServer = new WebSocketServer({ noServer: true });
   const sockets = new Set<WebSocket>();
@@ -480,6 +585,13 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
     sockets.add(socket);
 
     const messagePorts = new Map<string, WebSocketMessagePort>();
+    const browserConnectionId = randomUUID();
+    const browserViewIds = new Map<string, string>();
+    const sendToRenderer = (message: MainToRendererMessage): void => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(message));
+      }
+    };
     const dispatchPostMessage = (
       channel: string,
       message: unknown,
@@ -502,6 +614,8 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
 
     socket.on("close", () => {
       sockets.delete(socket);
+      bridgeState.handleRendererWebviewDisconnect?.(browserViewIds.values());
+      browserViewIds.clear();
       for (const port of messagePorts.values()) {
         port.disconnect();
       }
@@ -562,6 +676,62 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
 
       if (message.type === "message-port-close") {
         messagePorts.get(message.portId)?.disconnect();
+        return;
+      }
+
+      if (message.type === "browser-webview-create") {
+        if (
+          typeof message.viewId !== "string" ||
+          !Number.isInteger(message.instanceId) ||
+          typeof message.params !== "object" ||
+          message.params === null
+        ) {
+          return;
+        }
+        const existingViewId = browserViewIds.get(message.viewId);
+        if (existingViewId) {
+          bridgeState.handleRendererWebviewDestroy?.(existingViewId);
+        }
+        const rendererViewId = message.viewId;
+        const scopedViewId = `${browserConnectionId}:${rendererViewId}`;
+        browserViewIds.set(rendererViewId, scopedViewId);
+        bridgeState.handleRendererWebviewCreate?.(
+          { ...message, viewId: scopedViewId },
+          (response) => {
+            if (
+              response.type === "browser-webview-attached" ||
+              response.type === "browser-webview-frame" ||
+              response.type === "browser-webview-closed"
+            ) {
+              sendToRenderer({ ...response, viewId: rendererViewId });
+            }
+          },
+        );
+        return;
+      }
+
+      if (message.type === "browser-webview-command") {
+        const scopedViewId = browserViewIds.get(message.viewId);
+        if (
+          scopedViewId &&
+          typeof message.method === "string" &&
+          Array.isArray(message.args)
+        ) {
+          bridgeState.handleRendererWebviewCommand?.(
+            scopedViewId,
+            message.method,
+            message.args,
+          );
+        }
+        return;
+      }
+
+      if (message.type === "browser-webview-destroy") {
+        const scopedViewId = browserViewIds.get(message.viewId);
+        if (scopedViewId) {
+          browserViewIds.delete(message.viewId);
+          bridgeState.handleRendererWebviewDestroy?.(scopedViewId);
+        }
         return;
       }
 

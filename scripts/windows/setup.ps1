@@ -272,6 +272,14 @@ if (-not $SkipInstall) {
   }
 }
 
+Invoke-Step "Prepare pinned Electron runtime" {
+  $electronRuntimeArguments = @(".\scripts\ensure-electron-runtime.mjs")
+  if ($DownloadProxy) {
+    $electronRuntimeArguments += @("--proxy", $DownloadProxy)
+  }
+  Invoke-NativeCommand -FilePath $node -Arguments $electronRuntimeArguments -Name "prepare pinned Electron runtime"
+}
+
 if (-not $SkipPinnedCli) {
   Invoke-Step "Prepare pinned Codex CLI" {
     $runtimeArguments = @(".\scripts\managed-runtime.mjs", "prepare")

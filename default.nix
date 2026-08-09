@@ -90,6 +90,9 @@ flake-utils.lib.eachSystem systems (
         default = pkgs.buildNpmPackage {
           HOSTED_CODEX_APP_ZIP = codexZip;
           CODEX_CLI_PATH = "${codex}/bin/codex";
+          # importNpmLock intentionally suppresses dependency lifecycle scripts
+          # and the Nix sandbox cannot fetch Electron's release archive.
+          CODEX_WEB_SKIP_ELECTRON_RUNTIME = "1";
 
           pname = "codex-web";
           version = "1.0.0";
