@@ -106,11 +106,12 @@ focused, an early capture listener owns keyboard events, forwards a native
 key-down/character/key-up sequence to the guest, and prevents the renderer's
 global composer shortcut from consuming the same text. Headless window methods
 such as `showInactive()` retain their Electron focus semantics without trying
-to reveal a second host window. The real offscreen sidecar window starts
-hidden, cannot receive OS focus, never enters the taskbar, and hides again if
-Electron emits an unexpected show or owner-focus event. Guest `WebContents`
-focus remains available for injected keyboard input, but native DevTools are
-disabled because they would create another host-owned window.
+to reveal a second host window. Chromium's real offscreen owner starts hidden,
+transparent, frameless, off-display, non-focusable, and outside the taskbar; it
+reasserts those invariants before any unexpected ready/show/focus path can
+expose it. Renderer-side `RemoteWebContents` keeps logical focus, while direct
+guest input injection deliberately never focuses the native owner. Native
+DevTools are disabled because they would create another host-owned window.
 
 `src/server/auth.ts` owns the optional shared-password boundary enabled by
 `CODEX_WEB_AUTH_PASSWORD`. A Fastify request hook protects the renderer,

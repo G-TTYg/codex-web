@@ -345,12 +345,21 @@ test("Browser host remains a runtime dependency and preserves native attach life
   assert.match(electronShim, /"did-attach-webview"/);
   assert.match(electronShim, /new RemoteWebContents\(/);
   assert.match(browserHost, /focusable:\s*false/);
+  assert.match(browserHost, /frame:\s*false/);
+  assert.match(browserHost, /hasShadow:\s*false/);
+  assert.match(browserHost, /opacity:\s*0/);
   assert.match(browserHost, /show:\s*false/);
   assert.match(browserHost, /skipTaskbar:\s*true/);
+  assert.match(browserHost, /paintWhenInitiallyHidden:\s*true/);
   assert.match(browserHost, /browserWindow\.on\("show"/);
+  assert.match(browserHost, /browserWindow\.on\("ready-to-show"/);
+  assert.match(browserHost, /browserWindow\.setOpacity\(0\)/);
+  assert.match(browserHost, /browserWindow\.setPosition\(/);
   assert.match(browserHost, /browserWindow\.setFocusable\(false\)/);
-  assert.match(browserHost, /case "focus":[\s\S]*webContents\.focus\(\)/);
-  assert.match(browserHost, /if \(page\.window\.isVisible\(\)\)/);
+  assert.doesNotMatch(
+    browserHost,
+    /case "focus":[\s\S]*?webContents\.focus\(\)/,
+  );
   assert.doesNotMatch(
     browserHost,
     /case "inspectElement":\s*webContents\.inspectElement/,

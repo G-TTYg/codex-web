@@ -34,6 +34,7 @@ type PendingHostRequest = {
 
 const FRAME_INTERVAL_MS = 66;
 const EDITABLE_REFRESH_INTERVAL_MS = 250;
+const OFFSCREEN_WINDOW_ORIGIN = -32_000;
 const pages = new Map<string, HostedPage>();
 const pageSessionIdsByWebContentsId = new Map<number, string>();
 const configuredPartitions = new Set<string>();
@@ -452,20 +453,41 @@ function isEditableRect(value: unknown): value is BrowserEditableRect {
 }
 
 function enforceOffscreenWindow(browserWindow: BrowserWindow): void {
-  // This process is a rendering sidecar, not a second Desktop shell. Keep the
-  // native window unreachable even if Electron or a future guest lifecycle
-  // attempts to reveal it while the painted frame remains browser-owned.
-  browserWindow.setFocusable(false);
-  browserWindow.on("show", () => {
-    if (!browserWindow.isDestroyed()) {
+  // Chromium still needs an owner surface for offscreen paint, but that owner
+  // is never part of the product UI. Opacity and off-display placement make a
+  // future Electron show path fail closed before the asynchronous `show` event
+  // can hide it again.
+  const conceal = (): void => {
+    if (browserWindow.isDestroyed()) {
+      return;
+    }
+    browserWindow.setFocusable(false);
+    if (browserWindow.getOpacity() !== 0) {
+      browserWindow.setOpacity(0);
+    }
+    browserWindow.setSkipTaskbar(true);
+    if (browserWindow.isVisible()) {
+      browserWindow.setPosition(
+        OFFSCREEN_WINDOW_ORIGIN,
+        OFFSCREEN_WINDOW_ORIGIN,
+        false,
+      );
       browserWindow.hide();
     }
-  });
+  };
+  browserWindow.setFocusable(false);
+  browserWindow.setSkipTaskbar(true);
+  browserWindow.on("ready-to-show", conceal);
+  browserWindow.on("show", conceal);
   browserWindow.on("focus", () => {
     if (!browserWindow.isDestroyed()) {
       browserWindow.blur();
-      browserWindow.hide();
+      conceal();
     }
+  });
+  browserWindow.webContents.on("devtools-opened", () => {
+    browserWindow.webContents.closeDevTools();
+    conceal();
   });
 }
 
@@ -478,11 +500,17 @@ function createPage(options: BrowserHostCreateOptions): void {
   }
   const browserWindow = new BrowserWindow({
     focusable: false,
+    frame: false,
+    hasShadow: false,
+    opacity: 0,
+    paintWhenInitiallyHidden: true,
     show: false,
     skipTaskbar: true,
     useContentSize: true,
     width: Math.max(240, Math.round(options.width)),
     height: Math.max(160, Math.round(options.height)),
+    x: OFFSCREEN_WINDOW_ORIGIN,
+    y: OFFSCREEN_WINDOW_ORIGIN,
     webPreferences: {
       additionalArguments: options.additionalArguments,
       backgroundThrottling: false,
@@ -624,13 +652,9 @@ async function runCommand(
       webContents.send(String(args[0]), ...args.slice(1));
       return undefined;
     case "focus":
-      // The guest must be focused for Chromium to accept keyboard input, but
-      // the native owner is non-focusable and may never become a visible host
-      // OS window.
-      webContents.focus();
-      if (page.window.isVisible()) {
-        page.window.hide();
-      }
+      // RemoteWebContents tracks logical focus in the plain-Node shim. Input
+      // injection targets the guest directly and must not activate its hidden
+      // native owner: focusing it can let Windows reveal an Electron surface.
       return undefined;
     case "resize":
       page.window.setContentSize(
