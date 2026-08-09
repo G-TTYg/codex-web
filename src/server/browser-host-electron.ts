@@ -451,6 +451,24 @@ function isEditableRect(value: unknown): value is BrowserEditableRect {
   );
 }
 
+function enforceOffscreenWindow(browserWindow: BrowserWindow): void {
+  // This process is a rendering sidecar, not a second Desktop shell. Keep the
+  // native window unreachable even if Electron or a future guest lifecycle
+  // attempts to reveal it while the painted frame remains browser-owned.
+  browserWindow.setFocusable(false);
+  browserWindow.on("show", () => {
+    if (!browserWindow.isDestroyed()) {
+      browserWindow.hide();
+    }
+  });
+  browserWindow.on("focus", () => {
+    if (!browserWindow.isDestroyed()) {
+      browserWindow.blur();
+      browserWindow.hide();
+    }
+  });
+}
+
 function createPage(options: BrowserHostCreateOptions): void {
   destroyPage(options.sessionId, true);
   const partition = options.partition || "persist:codex-web-browser";
@@ -459,7 +477,9 @@ function createPage(options: BrowserHostCreateOptions): void {
     ensureInvokeChannel(channel);
   }
   const browserWindow = new BrowserWindow({
+    focusable: false,
     show: false,
+    skipTaskbar: true,
     useContentSize: true,
     width: Math.max(240, Math.round(options.width)),
     height: Math.max(160, Math.round(options.height)),
@@ -467,7 +487,7 @@ function createPage(options: BrowserHostCreateOptions): void {
       additionalArguments: options.additionalArguments,
       backgroundThrottling: false,
       contextIsolation: true,
-      devTools: true,
+      devTools: false,
       nodeIntegration: false,
       offscreen: { useSharedTexture: false },
       preload: options.preloadPath,
@@ -477,6 +497,7 @@ function createPage(options: BrowserHostCreateOptions): void {
       webviewTag: false,
     },
   });
+  enforceOffscreenWindow(browserWindow);
   const page: HostedPage = {
     editableRects: [],
     editableRefreshPending: false,
@@ -603,7 +624,13 @@ async function runCommand(
       webContents.send(String(args[0]), ...args.slice(1));
       return undefined;
     case "focus":
+      // The guest must be focused for Chromium to accept keyboard input, but
+      // the native owner is non-focusable and may never become a visible host
+      // OS window.
       webContents.focus();
+      if (page.window.isVisible()) {
+        page.window.hide();
+      }
       return undefined;
     case "resize":
       page.window.setContentSize(
@@ -626,7 +653,8 @@ async function runCommand(
       webContents.downloadURL(String(args[0]), args[1] as never);
       return undefined;
     case "inspectElement":
-      webContents.inspectElement(Number(args[0]), Number(args[1]));
+      // Native DevTools would be another host OS window. The web surface owns
+      // inspection and must never reveal this rendering sidecar.
       return undefined;
     case "debugger.attach":
       webContents.debugger.attach(args[0] as string | undefined);

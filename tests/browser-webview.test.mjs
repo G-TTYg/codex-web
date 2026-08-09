@@ -323,22 +323,38 @@ test("webview installation is idempotent across duplicate preload evaluation", a
 });
 
 test("Browser host remains a runtime dependency and preserves native attach lifecycle", async () => {
-  const [packageJson, electronShim, serverMain] = await Promise.all([
-    readFile(new URL("../package.json", import.meta.url), "utf8").then(
-      JSON.parse,
-    ),
-    readFile(
-      new URL("../src/server/electron/index.ts", import.meta.url),
-      "utf8",
-    ),
-    readFile(new URL("../src/server/main.ts", import.meta.url), "utf8"),
-  ]);
+  const [packageJson, browserHost, electronShim, serverMain] =
+    await Promise.all([
+      readFile(new URL("../package.json", import.meta.url), "utf8").then(
+        JSON.parse,
+      ),
+      readFile(
+        new URL("../src/server/browser-host-electron.ts", import.meta.url),
+        "utf8",
+      ),
+      readFile(
+        new URL("../src/server/electron/index.ts", import.meta.url),
+        "utf8",
+      ),
+      readFile(new URL("../src/server/main.ts", import.meta.url), "utf8"),
+    ]);
 
   assert.equal(packageJson.dependencies.electron, "42.3.0");
   assert.equal(packageJson.devDependencies?.electron, undefined);
   assert.match(electronShim, /"will-attach-webview"/);
   assert.match(electronShim, /"did-attach-webview"/);
   assert.match(electronShim, /new RemoteWebContents\(/);
+  assert.match(browserHost, /focusable:\s*false/);
+  assert.match(browserHost, /show:\s*false/);
+  assert.match(browserHost, /skipTaskbar:\s*true/);
+  assert.match(browserHost, /browserWindow\.on\("show"/);
+  assert.match(browserHost, /browserWindow\.setFocusable\(false\)/);
+  assert.match(browserHost, /case "focus":[\s\S]*webContents\.focus\(\)/);
+  assert.match(browserHost, /if \(page\.window\.isVisible\(\)\)/);
+  assert.doesNotMatch(
+    browserHost,
+    /case "inspectElement":\s*webContents\.inspectElement/,
+  );
   assert.match(serverMain, /new BrowserHost\(projectRoot\)/);
   assert.match(serverMain, /browserConnectionId/);
   assert.doesNotMatch(serverMain, /iframe/i);
@@ -443,6 +459,12 @@ test("Electron shim attaches a remote guest and forwards native page state", asy
   assert.equal(navigatedUrl, "https://example.test/");
   assert.equal(didAttachGuest.getURL(), "https://example.test/");
   assert.equal(didAttachGuest.getTitle(), "Example");
+
+  const notificationCountBeforeFocus = notifications.length;
+  didAttachGuest.focus();
+  assert.equal(electron.webContents.getFocusedWebContents(), didAttachGuest);
+  assert.equal(notifications.length, notificationCountBeforeFocus + 1);
+  assert.equal(notifications.at(-1).method, "focus");
 
   assert.deepEqual(
     await sessions
